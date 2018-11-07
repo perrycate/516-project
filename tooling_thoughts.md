@@ -1,3 +1,9 @@
+---
+header-includes: |
+    \usepackage{pset}
+    \usepackage[margin=1in]{geometry}
+    \usepackage{mathrsfs}
+---
 # Ocaml
 
 ## Pros
