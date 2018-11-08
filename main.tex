@@ -1,0 +1,42 @@
+\documentclass{article}
+\usepackage[colorlinks=true, urlcolor=blue]{hyperref}
+
+\title{COS 516: Class Project Outline \\ \emph{Implementing Lazy Abstraction with Interpolants}}
+
+\author{Andrew Wonnacott, Perry Cate}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+We will implement the model checker described in \href{http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.84.4733&rep=rep1&type=pdf}{Lazy Abstraction with Interpolants}. This 2006 paper extended interpolation-based model checking to infinite-state systems, yielding a significant performance advantage over the previous method, predicate abstraction. We plan to use \href{https://www.rust-lang.org/en-US/}{Rust} as our implementing language, and will initially target the Simple Interpreted Language used in class.
+
+\section{Proposed Work}
+We will implement Lazy Abstraction in the Rust programming language. The Lazy Abstraction algorithm requires subcalls to an SMT solver or theorem prover, for which we will use Z3. Rust has good support for Z3 through an easily-installed `crate' \href{https://crates.io/crates/z3}{z3} with ready-to-use bindings and types.
+For simplicity, we will initially target the Simple Interpreted Language (SIL) used in class for analysis. If time allows, we will attempt to extend the language to the full Simple Goto Language used in the paper or with features from the MiniML language used in COS 326.
+For testing examples, we will be using the example locking synchronization code used by the paper, as well as proving the correctness of a simple Binary Search implementation.
+Our deliverable will include all sample programs and code used for testing purposes, our working source code, and sample program output.
+Our final report will describe the implementation of the algorithm and any challenges faced. We will analyze whether these challenges were caused by abstraction in the source paper or by our choice of tooling.
+
+\section{Proposed Schedule}
+Our proposed schedule has checkpoints every Wednesday. This will allow 4 days of buffer time between our last checkpoint and the start of presentations. We aim to have the algorithm complete  by the time of our presentation, which would allow all of winter break and reading period to complete the paper. If necessary, winter break will be used as buffer time to finish completing and/or tweaking our implementation. The checkpoints are as follows:
+
+By Wednesday 11/14, we will have set up our development environments for Z3 and Rust, have verified this by implementing Sudoku solver (translated from COS 516 problem set 2). We may have also implemented a parser for Simple Interpreted Language into an AST data type in Rust. Though the parser is not a necessary part of our project, it would be useful for testing on larger example programs. We will also implement our sample programs in SIL.
+
+By Wednesday 11/21, we will have the skeleton architecture of our program, fully outlining the algorithm as described in the paper. This will consist of data structure definitions and function declarations, with dummy implementations and containing TODOs and comments describing the purpose of each function. If we meet this checkpoint prior to the 21st, work will begin on the 11/28 checkpoint.
+
+By Wednesday 11/28, our optimistic goal is to have working implementations of all of the functions declared above. During this process, we will likely need to reorganize or rearchitect some parts of our model checker, and so some components may not be complete. Regardless, we will submit an interim progress report containing all of the tasks described for 11/21 and summary of the progress on implementation.
+
+By Wednesday 12/05 we will have completed implementation of the algorithm and, time allowing, have outlined our writeup.
+Between 12/05 and 12/10 we will convert our writeup outline into a presentation and demonstrate our ability to derive interpolants for our example programs.
+If our implementation is not working by 12/10, we will plan to present any progress made. If our implementation contains amusing bugs, we may incorporate them into our presentation.
+
+After our presentation, we will focus on filling in the paper details and on any potential extensions we have time to explore.
+
+\section{Potential extensions}
+One strength of Rust is the relative simplicity of parallelizing a working Rust algorithm, because the compiler statically verifies that race conditions and deadlock will not occur. Thus, we could potentially implement optimizations and heuristics to improve our runtimes. 
+
+In addition, we could potentially use \href{https://kha.github.io/electrolysis/}{electrolysis} to translate our Rust program into the Lean proof system, and prove some components and subprocedures of our model checker formally using Lean.
+
+% https://www.cs.utexas.edu/users/hunt/FMCAD/FMCAD13/papers/43-Multithreaded-Software-Impact.pdf
+\end{document}
