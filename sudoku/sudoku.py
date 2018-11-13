@@ -54,10 +54,10 @@ def addSquareConstraints(X):
     return [Implies(X[i][j] == h,
                     And([Or(X[ii][jj] < h,
                             X[ii][jj] > h)
-                         for ii in range((i - 1) / 3 * 3,
-                                         ((i - 1) / 3) * 3)
-                         for jj in range((i - 1) / 3 * 3,
-                                         ((i - 1) / 3) * 3)
+                         for ii in range(i / 3 * 3,
+                                         (i / 3 + 1) * 3)
+                         for jj in range(j / 3 * 3,
+                                         (j / 3 + 1) * 3)
                          if i != ii or j != jj]))
             for h in range(1, 10)
             for i in range(9)
