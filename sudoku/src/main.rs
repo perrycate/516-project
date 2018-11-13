@@ -1,4 +1,3 @@
-extern crate z3;
 mod sudoku;
 
 use std::env;
