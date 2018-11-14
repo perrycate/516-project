@@ -1,5 +1,5 @@
 #!/usr/bin/env python2
-from z3 import And, Implies, Int, Or, Solver, unsat
+from z3 import And, Implies, Int, Or, Solver, unsat, sat
 import sys
 import time
 
