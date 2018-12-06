@@ -1,7 +1,0 @@
-[package]
-name = "php"
-version = "0.1.0"
-authors = ["Andrew Wonnacott <awonnacott@princeton.edu>", "Perry Cate <ncate@princeton.edu>"]
-
-[dependencies]
-z3 = "0.2.0"
