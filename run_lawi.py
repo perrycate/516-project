@@ -1,6 +1,6 @@
 #!/usr/bin/env python2
-from invgen import ControlFlowAutomaton, SignValuation, ConstantValuation, analyze_and_print
 from sil import program
+from lawi import ControlFlowAutomaton, analyze_and_print
 import sys
 import random
 

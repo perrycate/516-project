@@ -277,45 +277,6 @@ class CmdPrint(Command):
         return "print(%s)" % str(self.expr)
 
 
-# Control flow automaton: directed graph with a command labelling each edge
-class ControlFlowAutomaton:
-    def __init__(self):
-        self.max_loc = 0
-        self.succs = {}
-        self.labels = {}
-        self.entry = 0
-
-    def fresh_vertex(self):
-        v = self.max_loc
-        self.max_loc = v + 1
-        self.succs[v] = set()
-        return v
-
-    def add_edge(self, u, cmd, v):
-        self.succs[u].add(v)
-        self.labels[(u, v)] = cmd
-
-    def successors(self, v):
-        """Set of all successors of a given vertex"""
-        return self.succs[v]
-
-    def command(self, u, v):
-        """The command associated with a given edge"""
-        return self.labels[(u, v)]
-
-    def vars(self):
-        """The set of variables that appear in the CFA"""
-        vars = set()
-        for command in self.labels.values():
-            vars = vars | command.vars()
-        return vars
-
-    def locations(self):
-        """The set of locations (vertices) in the CFA"""
-        return set(range(self.max_loc))
-############################################################################
-
-
 ############################################################################
 # Statements are program phrases that can change the state of the program.
 # Again, each statement is equipped with three methods:
