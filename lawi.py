@@ -1,3 +1,6 @@
+import z3
+
+
 # Control flow automaton: directed graph with a command labelling each edge
 class ControlFlowAutomaton:
     def __init__(self):
@@ -37,6 +40,12 @@ class ControlFlowAutomaton:
 ############################################################################
 
 
+def models(lhs, rhs):
+    s = z3.Solver()
+    s.add(z3.Not(z3.Implies(lhs, z3.rhs)))
+    return s.check() == z3.unsat
+
+
 class UnwindingVertex:
     next_num = 0
 
@@ -48,6 +57,7 @@ class UnwindingVertex:
         # \( M_e(self.parent, self) \)
         self.children = set()
         self.label = True  # \( \psi(self) \)
+        self.covered = False
         self.num = UnwindingVertex.next_num
         UnwindingVertex.next_num += 1
 
@@ -96,10 +106,10 @@ class Unwinding:
         self.covering = set()  # \( \triangleright \)
         # self.uncovered_verts caches uncovered vertices
         # \( \epsilon \) is initially uncovered
-        self.uncovered_verts = {eps}
+        self.uncovered_leaves = {eps}
         self.cfa = cfa  # cfa.verts is \( \Lambda \)
-        while self.uncovered_verts:  # TODO: only take uncovered leaves
-            v = self.uncovered_verts.pop()
+        while self.uncovered_leaves:
+            v = self.uncovered_leaves.pop()
             w = v.parent
             while w is not None:
                 self.close(w)
@@ -113,59 +123,66 @@ class Unwinding:
 
     def dfs(self, v):
         self.close(v)
-        if v not in self.uncovered_verts:
+        if v.covered or v.location != self.loc_entry:
             return
-        if v.location == self.loc_entry:
-            self.refine(v)
-            w = v
-            while w is not None:
-                self.close(w)
-                w = w.parent
-            self.expand(v)
-            for w in v.children():
-                self.dfs(w)
+        self.refine(v)
+        w = v
+        while w is not None:
+            self.close(w)
+            w = w.parent
+        self.expand(v)
+        for w in v.children():
+            self.dfs(w)
 
     def cover(self, v, w):
-        if v in self.uncovered_verts and v.location == w.location and not w.has_weak_ancestor(v):
-            if v.label.models(w.label):  # TODO: models (use z3)
-                self.covering.add((v, w))
+        if v.covered or v.location != w.location or w.has_weak_ancestor(v):
+            return
+        if not models(v.label, w.label):
+            return
+        self.covering.add((v, w))
+        self.covering = set(
+            (x, y)
+            for (x, y) in self.covering
+            if not y.has_weak_ancestor(v)
+        )
+        v.covered = True
+        self.uncovered_leaves.remove(v)
+        # TODO: does this uncover anything? should anything be added to uncovered_leaves?
+
+    def refine(self, v):
+        if v.location != self.loc_exit:
+            return
+        if models(v.label, False):
+            return
+        v_pi, u_pi = v.ancestors_path()
+        u_pi = [t.timeshift(i) for (i, t) in enumerate(u_pi)]  # TODO: timeshift (wtf is it)
+        assert(len(v_pi) == len(u_pi) + 1)
+        # make_interpolant aborts if no interpolant exists
+        # TODO: catch make_interpolant expcetion and repackage it with current state
+        a_hat = make_interpolant(u_pi)  # TODO: make_interpolant (how?)
+        assert(len(a_hat) == len(v_pi))
+        for i in range(len(a_hat)):
+            phi = a_hat[i].timeshift(-i)  # TODO: timeshift
+            if not models(v_pi[i].label, phi):
                 self.covering = set(
                     (x, y)
                     for (x, y) in self.covering
-                    if not y.has_weak_ancestor(v)
+                    if y == v_pi[i]
                 )
-                # TODO: regenerate self.uncovered_verts
-
-    def refine(self, v):
-        if v.location == self.loc_exit and v.label.models(False):  # TODO: models (use z3)
-            v_pi, u_pi = v.ancestors_path()
-            u_pi = [t.timeshift(i) for (i, t) in enumerate(u_pi)]  # TODO: timeshift (wtf is it)
-            assert(len(v_pi) == len(u_pi) + 1)
-            # make_interpolant aborts if no interpolant exists
-            # TODO: catch make_interpolant expcetion and repackage it with current state
-            a_hat = make_interpolant(u_pi)  # TODO: make_interpolant (how?)
-            assert(len(a_hat) == len(v_pi))
-            for i in range(len(a_hat)):
-                phi = a_hat[i].timeshift(-i)  # TODO: timeshift
-                if not v_pi[i].label.models(phi):  # TODO: models (use z3)
-                    self.covering = set(
-                        (x, y)
-                        for (x, y) in self.covering
-                        if y == v_pi[i]
-                    )
-                    # TODO: regnerate self.uncovered_verts
-                    v_pi[i].label &= phi  # TODO: &= for labels (use z3)
+                # TODO: does this uncover anything? should anything be added to uncovered_leaves?
+                z3.And(v_pi[i].label, phi)
 
     def expand(self, v):
-        if v in self.uncovered_verts and v.children:
-            for m in cfa.succs[v.location]:  # TODO: really, all of them?
-                w = UnwindingVertex(
-                    parent=v,
-                    transition=self.cfa.command(v.location, m),
-                    location=m,
-                )
-                self.verts.add(w)
-                self.uncovered_verts.add(w)  # TODO: is this correct?
+        if v.covered or v.children:
+            return
+        for m in cfa.succs[v.location]:
+            w = UnwindingVertex(
+                parent=v,
+                transition=self.cfa.command(v.location, m),
+                location=m,
+            )
+            self.verts.add(w)
+            self.uncovered_leaves.add(w)
 
 
 def analyze_and_print(domain, stmt):
