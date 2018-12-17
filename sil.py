@@ -11,6 +11,7 @@ from pyparsing import (
 from functools import reduce
 from typing import (
     Dict,
+    Optional,
     Set,
     Type,
 )
@@ -91,10 +92,7 @@ class Term(Expr):
     def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
         raise NotImplementedError()
 
-    def to_term(self) -> z3.ArithRef:
-        raise NotImplementedError()
-
-    def to_time_term(self, times) -> z3.ArithRef:
+    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
         raise NotImplementedError()
 
 
@@ -102,10 +100,7 @@ class Form(Expr):
     def eval(self, state: Dict[str, int]) -> int:
         raise NotImplementedError()
 
-    def to_formula(self) -> z3.BoolRef:
-        raise NotImplementedError()
-
-    def to_time_form(self, times: Dict[str, int]) -> z3.BoolRef:
+    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
         raise NotImplementedError()
 
 
@@ -113,19 +108,18 @@ class ExprVar(Term):
     """Variables"""
     def __init__(self, name: str) -> None:
         self.name = name
-        self.time = 0
 
     def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
         return state[self.name]
 
     def __str__(self) -> str:
-        return self.name + (str(self.time) if self.time else "")
+        return self.name
 
     def vars(self) -> Set[str]:
         return set([str(self)])
 
-    def to_term(self) -> z3.ArithRef:
-        return Int(str(self))
+    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
+        return Int(str(self) + "'" * (times[str(self)] if times is not None else 0))
 
 
 class ExprNumeral(Term):
@@ -142,7 +136,7 @@ class ExprNumeral(Term):
     def vars(self) -> Set[str]:
         return set()
 
-    def to_term(self) -> z3.ArithRef:
+    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
         return IntVal(self.value)
 
 
@@ -182,8 +176,8 @@ class ExprPlus(BinaryTermTerm):
     def __str__(self) -> str:
         return "(" + str(self.left) + " + " + str(self.right) + ")"
 
-    def to_term(self) -> z3.ArithRef:
-        return self.left.to_term() + self.right.to_term()
+    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
+        return self.left.to_term(times) + self.right.to_term(times)
 
 
 class ExprNeg(Term):
@@ -197,8 +191,8 @@ class ExprNeg(Term):
     def __str__(self) -> str:
         return "-(" + str(self.expr) + ")"
 
-    def to_term(self) -> z3.ArithRef:
-        return -self.expr.to_term()
+    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
+        return -self.expr.to_term(times)
 
     def vars(self) -> Set[str]:
         return self.expr.vars()
@@ -212,8 +206,8 @@ class ExprMul(BinaryTermTerm):
     def __str__(self) -> str:
         return "(" + str(self.left) + " * " + str(self.right) + ")"
 
-    def to_term(self) -> z3.ArithRef:
-        return self.left.to_term() * self.right.to_term()
+    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
+        return self.left.to_term(times) * self.right.to_term(times)
 
 
 class FormLt(BinaryTermForm):
@@ -224,8 +218,8 @@ class FormLt(BinaryTermForm):
     def __str__(self) -> str:
         return str(self.left) + " < " + str(self.right)
 
-    def to_formula(self) -> z3.BoolRef:
-        return self.left.to_term() < self.right.to_term()
+    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+        return self.left.to_term(times) < self.right.to_term(times)
 
 
 class FormEq(BinaryTermForm):
@@ -236,8 +230,8 @@ class FormEq(BinaryTermForm):
     def __str__(self) -> str:
         return str(self.left) + " == " + str(self.right)
 
-    def to_formula(self) -> z3.BoolRef:
-        return self.left.to_term() == self.right.to_term()
+    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+        return self.left.to_term(times) == self.right.to_term(times)
 
 
 class FormAnd(BinaryFormForm):
@@ -248,8 +242,8 @@ class FormAnd(BinaryFormForm):
     def __str__(self) -> str:
         return "(" + str(self.left) + " and " + str(self.right) + ")"
 
-    def to_formula(self) -> z3.BoolRef:
-        return And(self.left.to_formula(), self.right.to_formula())
+    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+        return And(self.left.to_formula(times), self.right.to_formula(times))
 
 
 class FormOr(BinaryFormForm):
@@ -260,8 +254,8 @@ class FormOr(BinaryFormForm):
     def __str__(self) -> str:
         return "(" + str(self.left) + " or " + str(self.right) + ")"
 
-    def to_formula(self) -> z3.BoolRef:
-        return Or(self.left.to_formula(), self.right.to_formula())
+    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+        return Or(self.left.to_formula(times), self.right.to_formula(times))
 
 
 class FormNot(Form):
@@ -278,8 +272,8 @@ class FormNot(Form):
     def vars(self) -> Set[str]:
         return self.phi.vars()
 
-    def to_formula(self) -> z3.BoolRef:
-        return Not(self.phi.to_formula())
+    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+        return Not(self.phi.to_formula(times))
 
 
 ############################################################################
@@ -291,7 +285,7 @@ class Command:
     def __str__(self) -> str:
         raise NotImplementedError()
 
-    def to_time_form(self, times: Dict[str, int]) -> z3.BoolRef:
+    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
         raise NotImplementedError()
 
 
@@ -307,10 +301,11 @@ class CmdAssign(Command):
     def __str__(self) -> str:
         return "{} := {}".format(self.lhs, self.rhs)
 
-    def to_time_form(self, times: Dict[str, int]) -> z3.BoolRef:
-        rhs = self.rhs.to_time_term(times)
-        times[self.lhs] += 1
-        lhs = mk_var(self.lhs).to_time_term(times)
+    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+        rhs = self.rhs.to_term(times)
+        if times is not None:
+            times[self.lhs] += 1
+        lhs = mk_var(self.lhs).to_term(times)
         return lhs == rhs
 
 
@@ -325,8 +320,8 @@ class CmdAssume(Command):
     def __str__(self) -> str:
         return "[{}]".format(self.condition)
 
-    def to_time_form(self, times: Dict[str, int]) -> z3.BoolRef:
-        self.condition.to_time_form(times)
+    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+        self.condition.to_formula(times)
 
 
 class CmdPrint(Command):

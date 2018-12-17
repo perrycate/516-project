@@ -66,7 +66,7 @@ def models(lhs: z3.BoolRef, rhs: z3.BoolRef) -> bool:
 def timeshift(u_pi: Iterable[Command]) -> Iterable[z3.BoolRef]:
     vars_times: Dict[str, int] = defaultdict(int)
     for phi in u_pi:
-        yield phi.to_time_form(vars_times)
+        yield phi.to_formula(vars_times)
 
 
 def untimeshift(phi: z3.BoolRef) -> z3.BoolRef:
