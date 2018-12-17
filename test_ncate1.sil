@@ -1,0 +1,9 @@
+x := 1;
+flag := 1;
+while (0<x){
+  if (flag = 1) {
+    x := x + 1
+  } else {
+    flag := flag + 1
+  }
+}

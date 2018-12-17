@@ -305,7 +305,7 @@ class CmdAssign(Command):
         rhs = self.rhs.to_term(times)
         if times is not None:
             times[self.lhs] += 1
-        lhs = mk_var(self.lhs).to_term(times)
+        lhs = ExprVar(self.lhs).to_term(times)
         return lhs == rhs
 
 
@@ -321,7 +321,7 @@ class CmdAssume(Command):
         return "[{}]".format(self.condition)
 
     def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
-        self.condition.to_formula(times)
+        return self.condition.to_formula(times)
 
 
 class CmdPrint(Command):

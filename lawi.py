@@ -17,6 +17,7 @@ from z3 import (
     BoolVal,
     unsat,
 )
+import code
 
 
 # Control flow automaton: directed graph with a command labelling each edge
@@ -73,7 +74,7 @@ def timeshift(u_pi: Iterable[Command]) -> Tuple[List[z3.BoolRef], Dict[str, int]
 def untimeshift(phi: z3.BoolRef, times: Dict[str, int]) -> z3.BoolRef:
     for k, v in times.items():
         while v:
-            phi = z3.substitute(phi, Int(k + ("'" * v)), Int(k))
+            phi = z3.substitute(phi, (Int(k + ("'" * v)), Int(k)))
             v -= 1
     return phi
 
@@ -158,7 +159,7 @@ class Unwinding:
         )
 
         # If error path is not None, unwinding is unsafe
-        self._error_path: Optional[List[int]] = None
+        self._error_path: Optional[Tuple[List[UnwindingVertex], z3.ModelRef]] = None
 
         self.verts: Set[UnwindingVertex] = {eps}  # \( V \leftarrow \{ \epsilon \} \)
         # \( E \) is stored as successor lists on vertices
@@ -179,7 +180,8 @@ class Unwinding:
 
     def __str__(self) -> str:
         if self.is_unsafe:
-            return "Unsafe: {}".format(self.error_path)
+            error_path, error_assign = self.error_path
+            return "Unsafe: {}{}".format(repr(error_assign), "".join(map("\n\t{}".format, error_path)))
 
         return "\n".join(map(str, self.verts))
 
@@ -198,7 +200,7 @@ class Unwinding:
         if v.covered:
             return
 
-        if v.location == self.loc_entry:
+        if v.location == self.loc_exit:
             self.refine(v)
             w: Optional[UnwindingVertex] = v
             while w is not None:
@@ -236,17 +238,18 @@ class Unwinding:
         if models(v.label, BoolVal(False)):
             return
         v_pi, u_pi = v.ancestors_path()
-        u_pi, times = timeshift(u_pi)
         assert(len(v_pi) == len(u_pi) + 1)
-        # make_interpolant aborts if no interpolant exists
+        u_pi_, times = timeshift(u_pi)
+        assert(len(u_pi) == len(u_pi_))
         try:
-            a_hat = z3.sequence_interpolant(u_pi)
+            a_hat = z3.sequence_interpolant(u_pi_)
         except z3.ModelRef as model:
-            self.mark_unsafe(model)
+            self.mark_unsafe(v, model)
             return
-        assert(len(a_hat) == len(v_pi))
+        assert(len(v_pi) == len(a_hat) + 2)
         for i in range(len(a_hat)):
             phi = untimeshift(a_hat[i], times)
+            # TODO index errors: what is it doing with the interpolant?
             if not models(v_pi[i].label, phi):
                 for (x, y) in self.covering.copy():
                     if y == v_pi[i]:
@@ -271,16 +274,20 @@ class Unwinding:
             self.verts.add(w)
             self.uncovered_leaves.add(w)
 
-    def mark_unsafe(self, error_path: List[int]) -> None:
-        self._error_path = error_path
+    def mark_unsafe(self, unsafe_vert: UnwindingVertex, sat_assign: z3.ModelRef) -> None:
+        error_path, _ = unsafe_vert.ancestors_path()
+        self._error_path = (error_path, sat_assign)
 
     @property
     def is_unsafe(self) -> bool:
         return self._error_path is not None
 
     @property
-    def error_path(self) -> Optional[List[int]]:
+    def error_path(self) -> Optional[Tuple[List[UnwindingVertex], z3.ModelRef]]:
         return self._error_path
+
+    def __getitem__(self, loc: int) -> str:
+        return "; ".join(str(v) for v in self.verts if v.location == loc)
 
 
 def analyze_and_print(stmt):
@@ -290,7 +297,6 @@ def analyze_and_print(stmt):
     stmt.to_cfa(cfa, loc_entry, loc_exit)
     annotation = Unwinding(cfa, loc_entry, loc_exit)
     print(annotation)
-    import code
+    stmt.print_annotation(annotation, 0)
+    print("{" + str(annotation[loc_exit]) + "}")
     code.interact(local=locals())
-    # stmt.print_annotation(annotation, 0)
-    # print("{" + str(annotation[loc_exit]) + "}")
