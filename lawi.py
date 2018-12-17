@@ -46,6 +46,10 @@ def models(lhs, rhs):
     return s.check() == z3.unsat
 
 
+def timeshift(phi, i):
+    return phi
+
+
 class UnwindingVertex:
     next_num = 0
 
@@ -155,14 +159,14 @@ class Unwinding:
         if models(v.label, False):
             return
         v_pi, u_pi = v.ancestors_path()
-        u_pi = [t.timeshift(i) for (i, t) in enumerate(u_pi)]  # TODO: timeshift (wtf is it)
+        u_pi = [timeshift(t, i) for (i, t) in enumerate(u_pi)]  # TODO: timeshift (wtf is it)
         assert(len(v_pi) == len(u_pi) + 1)
         # make_interpolant aborts if no interpolant exists
         # TODO: catch make_interpolant expcetion and repackage it with current state
-        a_hat = make_interpolant(u_pi)  # TODO: make_interpolant (how?)
+        a_hat = z3.sequence_interpolant(u_pi)
         assert(len(a_hat) == len(v_pi))
         for i in range(len(a_hat)):
-            phi = a_hat[i].timeshift(-i)  # TODO: timeshift
+            phi = timeshift(a_hat[i], -i)  # TODO: timeshift
             if not models(v_pi[i].label, phi):
                 self.covering = set(
                     (x, y)
@@ -175,7 +179,7 @@ class Unwinding:
     def expand(self, v):
         if v.covered or v.children:
             return
-        for m in cfa.succs[v.location]:
+        for m in cfa.successors(v.location):
             w = UnwindingVertex(
                 parent=v,
                 transition=self.cfa.command(v.location, m),
