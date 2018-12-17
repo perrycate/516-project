@@ -1,32 +1,53 @@
 from pyparsing import pyparsing_common, infixNotation, opAssoc, oneOf, Literal, Forward, Keyword, delimitedList
 from functools import reduce
+from typing import Dict, Set, Type
+from z3 import And, Or, Not, Int, IntVal, BoolVal
+from z3.z3 import ArithRef, BoolRef
 
 
 # An arith-structure gives meaning to numerals, addition, negation,
 # and multiplcation.
-class StdInt:
+class ArithStruct:
+    @staticmethod
+    def of_numeral(num: int) -> int:
+        raise NotImplementedError()
+
+    @staticmethod
+    def add(left: int, right: int) -> int:
+        raise NotImplementedError()
+
+    @staticmethod
+    def negate(expr: int) -> int:
+        raise NotImplementedError()
+
+    @staticmethod
+    def mul(left: int, right: int) -> int:
+        raise NotImplementedError()
+
+
+class StdInt(ArithStruct):
     """The standard structure over the integers"""
     @staticmethod
-    def of_numeral(num):
+    def of_numeral(num: int) -> int:
         return num
 
     @staticmethod
-    def add(left, right):
+    def add(left: int, right: int) -> int:
         return left + right
 
     @staticmethod
-    def negate(expr):
+    def negate(expr: int) -> int:
         return -expr
 
     @staticmethod
-    def mul(left, right):
+    def mul(left: int, right: int) -> int:
         return left * right
 
 
 ############################################################################
 # Expressions are represented as a tree, where there is a different class for
 # each type of node.  For example, an expression (x + 3*4) corresponds to a
-# tree:
+
 #     +                                    ExprPlus
 #   /   \                                   /   \
 #  x    *     -- corresponding to --  ExprVar ExprMul
@@ -39,242 +60,268 @@ class StdInt:
 # to_term: encode the expression as a Z3 term
 # Formulas are similar.
 class Expr:
-    def __str__(self):
+    def __str__(self) -> str:
         raise NotImplementedError()
 
-    def eval(self, struct, state):
-        raise NotImplementedError()
-
-    def vars(self):
+    def vars(self) -> Set[str]:
         raise NotImplementedError()
 
 
 class Term(Expr):
-    def to_term(self):
+    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
+        raise NotImplementedError()
+
+    def to_term(self) -> ArithRef:
+        raise NotImplementedError()
+
+    def to_time_term(self, times) -> ArithRef:
         raise NotImplementedError()
 
 
 class Form(Expr):
-    def to_formula(self):
+    def eval(self, state: Dict[str, int]) -> int:
+        raise NotImplementedError()
+
+    def to_formula(self) -> BoolRef:
+        raise NotImplementedError()
+
+    def to_time_form(self, times: Dict[str, int]) -> BoolRef:
         raise NotImplementedError()
 
 
 class ExprVar(Term):
     """Variables"""
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         self.name = name
+        self.time = 0
 
-    def eval(self, struct, state):
+    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
         return state[self.name]
 
-    def __str__(self):
-        return self.name
+    def __str__(self) -> str:
+        return self.name + (str(self.time) if self.time else "")
 
-    def vars(self):
-        return set([self.name])
+    def vars(self) -> Set[str]:
+        return set([str(self)])
 
-    def to_term(self):
-        return Int(self.name)
+    def to_term(self) -> ArithRef:
+        return Int(str(self))
 
 
 class ExprNumeral(Term):
     """Numerals"""
-    def __init__(self, value):
+    def __init__(self, value: int) -> None:
         self.value = value
 
-    def eval(self, struct, state):
+    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
         return struct.of_numeral(self.value)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.value)
 
-    def vars(self):
+    def vars(self) -> Set[str]:
         return set()
 
-    def to_term(self):
+    def to_term(self) -> ArithRef:
         return IntVal(self.value)
 
 
 class BinaryExpr(Expr):
     """Abstract class representing binary expressions"""
-    def __init__(self, left, right):
+    def __init__(self, left: Expr, right: Expr) -> None:
         self.left = left
         self.right = right
 
-    def vars(self):
+    def vars(self) -> Set[str]:
         return self.left.vars() | self.right.vars()
 
 
-class ExprPlus(BinaryExpr, Term):
+class BinaryTermTerm(BinaryExpr, Term):
+    def __init__(self, left: Term, right: Term) -> None:
+        self.left: Term = left
+        self.right: Term = right
+
+
+class BinaryTermForm(BinaryExpr, Form):
+    def __init__(self, left: Term, right: Term) -> None:
+        self.left: Term = left
+        self.right: Term = right
+
+
+class BinaryFormForm(BinaryExpr, Form):
+    def __init__(self, left: Form, right: Form) -> None:
+        self.left: Form = left
+        self.right: Form = right
+
+
+class ExprPlus(BinaryTermTerm):
     """Addition"""
-    def eval(self, struct, state):
+    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
         return struct.add(self.left.eval(struct, state), self.right.eval(struct, state))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "(" + str(self.left) + " + " + str(self.right) + ")"
 
-    def to_term(self):
+    def to_term(self) -> ArithRef:
         return self.left.to_term() + self.right.to_term()
 
 
 class ExprNeg(Term):
     """Negation"""
-    def __init__(self, expr):
+    def __init__(self, expr: Term) -> None:
         self.expr = expr
 
-    def eval(self, struct, state):
+    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
         return struct.negate(self.expr.eval(struct, state))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "-(" + str(self.expr) + ")"
 
-    def to_term(self):
+    def to_term(self) -> ArithRef:
         return -self.expr.to_term()
 
-    def vars(self):
+    def vars(self) -> Set[str]:
         return self.expr.vars()
 
 
-class ExprMul(BinaryExpr, Term):
+class ExprMul(BinaryTermTerm):
     """Multiplication"""
-    def eval(self, struct, state):
+    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
         return struct.mul(self.left.eval(struct, state), self.right.eval(struct, state))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "(" + str(self.left) + " * " + str(self.right) + ")"
 
-    def to_term(self):
+    def to_term(self) -> ArithRef:
         return self.left.to_term() * self.right.to_term()
 
 
-class FormLt(BinaryExpr, Form):
+class FormLt(BinaryTermForm):
     """Strictly less-than"""
-    def eval(self, state):
+    def eval(self, state: Dict[str, int]) -> int:
         return self.left.eval(StdInt, state) < self.right.eval(StdInt, state)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.left) + " < " + str(self.right)
 
-    def to_formula(self):
+    def to_formula(self) -> BoolRef:
         return self.left.to_term() < self.right.to_term()
 
 
-class FormEq(BinaryExpr, Form):
+class FormEq(BinaryTermForm):
     """Equal to"""
-    def eval(self, state):
+    def eval(self, state: Dict[str, int]) -> int:
         return self.left.eval(StdInt, state) == self.right.eval(StdInt, state)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.left) + " == " + str(self.right)
 
-    def to_formula(self):
+    def to_formula(self) -> BoolRef:
         return self.left.to_term() == self.right.to_term()
 
 
-class FormAnd(BinaryExpr, Form):
+class FormAnd(BinaryFormForm):
     """And"""
-    def eval(self, state):
+    def eval(self, state: Dict[str, int]) -> int:
         return self.left.eval(state) and self.right.eval(state)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "(" + str(self.left) + " and " + str(self.right) + ")"
 
-    def to_formula(self):
+    def to_formula(self) -> BoolRef:
         return And(self.left.to_formula(), self.right.to_formula())
 
 
-class FormOr(BinaryExpr, Form):
+class FormOr(BinaryFormForm):
     """Or"""
-    def eval(self, state):
+    def eval(self, state: Dict[str, int]) -> int:
         return self.left.eval(state) or self.right.eval(state)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "(" + str(self.left) + " or " + str(self.right) + ")"
 
-    def to_formula(self):
+    def to_formula(self) -> BoolRef:
         return Or(self.left.to_formula(), self.right.to_formula())
 
 
 class FormNot(Form):
     """Not"""
-    def __init__(self, phi):
+    def __init__(self, phi: Form) -> None:
         self.phi = phi
 
-    def eval(self, state):
+    def eval(self, state: Dict[str, int]) -> int:
         return not (self.phi.eval(state))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "not(" + str(self.phi) + ")"
 
-    def vars(self):
+    def vars(self) -> Set[str]:
         return self.phi.vars()
 
-    def to_formula(self):
+    def to_formula(self) -> BoolRef:
         return Not(self.phi.to_formula())
 
 
 ############################################################################
 # Control flow
 class Command:
-    def post(self, struct, state):
+    def vars(self) -> Set[str]:
         raise NotImplementedError()
 
-    def vars(self):
+    def __str__(self) -> str:
         raise NotImplementedError()
 
-    def __str__(self):
+    def to_time_form(self, times: Dict[str, int]) -> BoolRef:
         raise NotImplementedError()
 
 
 class CmdAssign(Command):
     """Variable assignment"""
-    def __init__(self, lhs, rhs):
+    def __init__(self, lhs: str, rhs: Term) -> None:
         self.lhs = lhs
         self.rhs = rhs
 
-    def post(self, struct, state):
-        if state.is_bottom():
-            return state
-
-        post_state = type(state)(state)
-        post_state[self.lhs] = self.rhs.eval(struct, state)
-        return post_state
-
-    def vars(self):
+    def vars(self) -> Set[str]:
         return set([self.lhs]) | self.rhs.vars()
 
-    def __str__(self):
-        return "%s := %s" % (self.lhs, str(self.rhs))
+    def __str__(self) -> str:
+        return "{} := {}".format(self.lhs, self.rhs)
+
+    def to_time_form(self, times: Dict[str, int]) -> BoolRef:
+        rhs = self.rhs.to_time_term(times)
+        times[self.lhs] += 1
+        lhs = mk_var(self.lhs).to_time_term(times)
+        return lhs == rhs
 
 
 class CmdAssume(Command):
     """Guard"""
-    def __init__(self, condition):
+    def __init__(self, condition: Form) -> None:
         self.condition = condition
 
-    def post(self, struct, state):
-        return state
-
-    def vars(self):
+    def vars(self) -> Set[str]:
         return self.condition.vars()
 
-    def __str__(self):
-        return "[%s]" % str(self.condition)
+    def __str__(self) -> str:
+        return "[{}]".format(self.condition)
+
+    def to_time_form(self, times: Dict[str, int]) -> BoolRef:
+        self.condition.to_time_form(times)
 
 
 class CmdPrint(Command):
     """Print to stdout"""
-    def __init__(self, expr):
+    def __init__(self, expr: Expr) -> None:
         self.expr = expr
 
-    def post(self, struct, state):
-        return state
-
-    def vars(self):
+    def vars(self) -> Set[str]:
         return self.expr.vars()
 
-    def __str__(self):
-        return "print(%s)" % str(self.expr)
+    def __str__(self) -> str:
+        return "print({})".format(self.expr)
+
+    def to_time_form(self, times: Dict[str, int]) -> BoolRef:
+        return BoolVal(False)
 
 
 ############################################################################
@@ -290,10 +337,10 @@ class CmdPrint(Command):
 # print_annotation: like pp, but additionally print an annotation
 class Stmt:
     """Statements"""
-    def __init__(self):
+    def __init__(self) -> None:
         self.entry = None
 
-    def pp(self, indent):
+    def pp(self, indent: int) -> str:
         raise NotImplementedError()
 
     def print_annotation(self, annotation, indent):
@@ -315,7 +362,7 @@ class StmtAssign(Stmt):
     def execute(self, state):
         state[self.lhs] = self.rhs.eval(StdInt, state)
 
-    def pp(self, indent):
+    def pp(self, indent: int) -> str:
         return ("    " * indent) + self.lhs + " = " + str(self.rhs) + "\n"
 
     def print_annotation(self, annotation, indent):
@@ -340,7 +387,7 @@ class StmtIf(Stmt):
         else:
             self.belse.execute(state)
 
-    def pp(self, indent):
+    def pp(self, indent: int) -> str:
         program = ("    " * indent) + "if " + str(self.cond) + ":\n"
         program += self.bthen.pp(indent + 1)
         program += ("    " * indent) + "else:\n"
@@ -373,7 +420,7 @@ class StmtBlock(Stmt):
         for stmt in self.block:
             stmt.execute(state)
 
-    def pp(self, indent):
+    def pp(self, indent: int) -> str:
         return "".join(map(lambda x: x.pp(indent), self.block))
 
     def print_annotation(self, annotation, indent):
@@ -400,7 +447,7 @@ class StmtWhile(Stmt):
         while self.cond.eval(state):
             self.body.execute(state)
 
-    def pp(self, indent):
+    def pp(self, indent: int) -> str:
         program = ("    " * indent) + "while " + str(self.cond) + ":\n"
         program += self.body.pp(indent + 1)
         return program
@@ -426,7 +473,7 @@ class StmtPrint(Stmt):
     def execute(self, state):
         print(self.expr.eval(StdInt, state))
 
-    def pp(self, indent):
+    def pp(self, indent: int) -> str:
         return ("    " * indent) + "print(" + str(self.expr) + ")\n"
 
     def to_cfa(self, cfa, u, v):

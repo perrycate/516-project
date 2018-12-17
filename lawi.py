@@ -1,6 +1,8 @@
+from collections import defaultdict
 import sil
-from typing import List, Set, Optional, Tuple
-import z3
+from typing import Dict, Iterable, List, Optional, Set, Tuple
+from z3 import ModelRef, Solver, Implies, Not, And, BoolVal, unsat, sequence_interpolant
+from z3.z3 import BoolRef
 
 
 # Control flow automaton: directed graph with a command labelling each edge
@@ -42,19 +44,20 @@ class ControlFlowAutomaton:
 ############################################################################
 
 
-def models(lhs, rhs):
-    s = z3.Solver()
-    s.add(z3.Not(z3.Implies(lhs, z3.rhs)))
-    return s.check() == z3.unsat
+def models(lhs: BoolRef, rhs: BoolRef) -> bool:
+    s = Solver()
+    s.add(Not(Implies(lhs, rhs)))
+    return s.check() == unsat
 
 
-def timeshift(u_pi):
-    shifted_vars = {}
+def timeshift(u_pi: Iterable[sil.Command]) -> Iterable[BoolRef]:
+    vars_times: Dict[str, int] = defaultdict(int)
     for phi in u_pi:
-        if isinstance(phi, CmdAssign):
-            pass
-        elif isinstance(phi, CmdAssume):
-            pass
+        yield phi.to_time_form(vars_times)
+
+
+def untimeshift(phi: BoolRef) -> BoolRef:
+    raise NotImplementedError()
 
 
 class UnwindingVertex:
@@ -74,8 +77,8 @@ class UnwindingVertex:
         self.transition: Optional[sil.Command] = transition  # \( T \)
         self.location: int = location  # \( M_v(self) \)
         # \( M_e(self.parent, self) \)
-        self.children: Set['UnwindingVertex'] = set([])
-        self.label: bool = True  # \( \psi(self) \)
+        self.children: Set['UnwindingVertex'] = set()
+        self.label: BoolRef = BoolVal(True)  # \( \psi(self) \)
         self.covered: bool = False
 
     def __lt__(self, other):  # \( \prec \)
@@ -167,7 +170,7 @@ class Unwinding:
         if v.covered or v.location != self.loc_entry:
             return
         self.refine(v)
-        w = v
+        w: Optional[UnwindingVertex] = v
         while w is not None:
             self.close(w)
             w = w.parent
@@ -193,20 +196,20 @@ class Unwinding:
     def refine(self, v: UnwindingVertex) -> None:
         if v.location != self.loc_exit:
             return
-        if models(v.label, False):
+        if models(v.label, BoolVal(False)):
             return
         v_pi, u_pi = v.ancestors_path()
         u_pi = list(timeshift(u_pi))
         assert(len(v_pi) == len(u_pi) + 1)
         # make_interpolant aborts if no interpolant exists
         try:
-            a_hat = z3.sequence_interpolant(u_pi)
-        except z3.ModelRef as model:
+            a_hat = sequence_interpolant(u_pi)
+        except ModelRef as model:
             self.mark_unsafe(model)
             return
         assert(len(a_hat) == len(v_pi))
         for i in range(len(a_hat)):
-            phi = untimeshift(a_hat[i], -i)  # TODO: timeshift
+            phi = untimeshift(a_hat[i])
             if not models(v_pi[i].label, phi):
                 self.covering = set(
                     (x, y)
@@ -215,7 +218,7 @@ class Unwinding:
                 )
                 # TODO: does this uncover anything? should anything be added to uncovered_leaves?
                 # TODO what are the times when something becomes uncovered
-                z3.And(v_pi[i].label, phi)
+                And(v_pi[i].label, phi)
 
     def expand(self, v: UnwindingVertex) -> None:
         if v.covered or v.children:
@@ -248,5 +251,7 @@ def analyze_and_print(stmt):
     stmt.to_cfa(cfa, loc_entry, loc_exit)
     annotation = Unwinding(cfa, loc_entry, loc_exit)
     print(annotation)
+    import code
+    code.interact(local=locals())
     # stmt.print_annotation(annotation, 0)
     # print("{" + str(annotation[loc_exit]) + "}")
