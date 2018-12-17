@@ -1,8 +1,25 @@
-from pyparsing import pyparsing_common, infixNotation, opAssoc, oneOf, Literal, Forward, Keyword, delimitedList
+from pyparsing import (
+    Forward,
+    Keyword,
+    Literal,
+    delimitedList,
+    infixNotation,
+    oneOf,
+    opAssoc,
+    pyparsing_common,
+)
 from functools import reduce
 from typing import Dict, Set, Type
-from z3 import And, Or, Not, Int, IntVal, BoolVal
-from z3.z3 import ArithRef, BoolRef
+from z3 import (
+    And,
+    ArithRef,
+    BoolRef,
+    BoolVal,
+    Int,
+    IntVal,
+    Not,
+    Or,
+)
 
 
 # An arith-structure gives meaning to numerals, addition, negation,

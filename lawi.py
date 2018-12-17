@@ -1,8 +1,24 @@
 from collections import defaultdict
 import sil
-from typing import Dict, Iterable, List, Optional, Set, Tuple
-from z3 import ModelRef, Solver, Implies, Not, And, BoolVal, unsat, sequence_interpolant
-from z3.z3 import BoolRef
+from typing import (
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Set,
+    Tuple,
+)
+from z3 import (
+    BoolRef,
+    ModelRef,
+    Solver,
+    Implies,
+    Not,
+    And,
+    BoolVal,
+    sequence_interpolant,
+    unsat,
+)
 
 
 # Control flow automaton: directed graph with a command labelling each edge
