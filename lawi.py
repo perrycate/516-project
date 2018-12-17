@@ -1,3 +1,5 @@
+import sil
+from typing import List, Set, Optional, Tuple
 import z3
 from typing import Set, Tuple
 
@@ -47,24 +49,35 @@ def models(lhs, rhs):
     return s.check() == z3.unsat
 
 
-def timeshift(phi, i):
-    return phi
+def timeshift(u_pi):
+    shifted_vars = {}
+    for phi in u_pi:
+        if isinstance(phi, CmdAssign):
+            pass
+        elif isinstance(phi, CmdAssume):
+            pass
 
 
 class UnwindingVertex:
-    next_num = 0
+    next_num: int = 0
 
-    def __init__(self, parent, transition, location):
-        self.parent = parent
-        self.parent.children.add(self)
-        self.transition = transition  # \( T \)
-        self.location = location  # \( M_v(self) \)
-        # \( M_e(self.parent, self) \)
-        self.children = set()
-        self.label = True  # \( \psi(self) \)
-        self.covered = False
-        self.num = UnwindingVertex.next_num
+    def __init__(
+            self,
+            parent: Optional['UnwindingVertex'],
+            transition: Optional[sil.Command],
+            location: int,
+    ) -> None:
+        self.num: int = UnwindingVertex.next_num
         UnwindingVertex.next_num += 1
+        self.parent: Optional['UnwindingVertex'] = parent
+        if self.parent is not None:
+            self.parent.children.add(self)
+        self.transition: Optional[sil.Command] = transition  # \( T \)
+        self.location: int = location  # \( M_v(self) \)
+        # \( M_e(self.parent, self) \)
+        self.children: Set['UnwindingVertex'] = set([])
+        self.label: bool = True  # \( \psi(self) \)
+        self.covered: bool = False
 
     def __lt__(self, other):  # \( \prec \)
         return self.num < other.num
@@ -84,12 +97,26 @@ class UnwindingVertex:
     def __ne__(self, other):
         return self.num != other.num
 
+    def __hash__(self):
+        return self.num.__hash__()
+
+    def __repr__(self):
+        return "Vertex {}: parent {}, transition {}, location {}, label {}, covered {}".format(
+            self.num,
+            self.parent.num if self.parent is not None else None,
+            self.transition,
+            self.location,
+            self.label,
+            self.covered,
+        )
+
     def has_weak_ancestor(self, other):  # \( self \sqsubseteq other \)
         return self == other or (self.parent is not None and self.parent.has_weak_ancestor(other))
 
-    def ancestors_path(self):
+    def ancestors_path(self) -> Tuple[List['UnwindingVertex'], List[sil.Command]]:
         if self.parent is None:
             return [self], []
+        assert self.transition is not None
         v_pi, u_pi = self.parent.ancestors_path()
         v_pi.append(self)
         u_pi.append(self.transition)
@@ -121,6 +148,9 @@ class Unwinding:
                 w = w.parent
             self.dfs(v)
 
+    def __str__(self) -> str:
+        return str(self.verts)
+
     def close(self, v: UnwindingVertex) -> None:
         for w in self.verts:
             if w < v and w.location == v.location:
@@ -136,7 +166,7 @@ class Unwinding:
             self.close(w)
             w = w.parent
         self.expand(v)
-        for w in v.children():
+        for w in v.children:
             self.dfs(w)
 
     def cover(self, v: UnwindingVertex, w: UnwindingVertex) -> None:
@@ -160,14 +190,14 @@ class Unwinding:
         if models(v.label, False):
             return
         v_pi, u_pi = v.ancestors_path()
-        u_pi = [timeshift(t, i) for (i, t) in enumerate(u_pi)]  # TODO: timeshift (wtf is it)
+        u_pi = list(timeshift(u_pi))
         assert(len(v_pi) == len(u_pi) + 1)
         # make_interpolant aborts if no interpolant exists
         # TODO: catch make_interpolant expcetion and repackage it with current state
         a_hat = z3.sequence_interpolant(u_pi)
         assert(len(a_hat) == len(v_pi))
         for i in range(len(a_hat)):
-            phi = timeshift(a_hat[i], -i)  # TODO: timeshift
+            phi = untimeshift(a_hat[i], -i)  # TODO: timeshift
             if not models(v_pi[i].label, phi):
                 self.covering = set(
                     (x, y)
@@ -180,7 +210,7 @@ class Unwinding:
     def expand(self, v: UnwindingVertex) -> None:
         if v.covered or v.children:
             return
-        for m in cfa.successors(v.location):
+        for m in self.cfa.successors(v.location):
             w = UnwindingVertex(
                 parent=v,
                 transition=self.cfa.command(v.location, m),
@@ -190,11 +220,12 @@ class Unwinding:
             self.uncovered_leaves.add(w)
 
 
-def analyze_and_print(domain, stmt):
+def analyze_and_print(stmt):
     cfa = ControlFlowAutomaton()
     loc_entry = cfa.fresh_vertex()
     loc_exit = cfa.fresh_vertex()
     stmt.to_cfa(cfa, loc_entry, loc_exit)
     annotation = Unwinding(cfa, loc_entry, loc_exit)
-    stmt.print_annotation(annotation, 0)
-    print("{" + str(annotation[loc_exit]) + "}")
+    print(annotation)
+    # stmt.print_annotation(annotation, 0)
+    # print("{" + str(annotation[loc_exit]) + "}")
