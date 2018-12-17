@@ -1,4 +1,5 @@
 import z3
+from typing import Set, Tuple
 
 
 # Control flow automaton: directed graph with a command labelling each edge
@@ -96,22 +97,22 @@ class UnwindingVertex:
 
 
 class Unwinding:
-    def __init__(self, cfa, loc_entry, loc_exit):
-        self.loc_entry = loc_entry  # \( l_i \)
-        self.loc_exit = loc_exit  # \( l_f \)
+    def __init__(self, cfa, loc_entry, loc_exit) -> None:
+        self.loc_entry: int = loc_entry  # \( l_i \)
+        self.loc_exit: int = loc_exit  # \( l_f \)
         eps = UnwindingVertex(
             location=loc_entry,
             parent=None,
             transition=None,
         )
-        self.verts = {eps}  # \( V \leftarrow \{ \epsilon \} \)
+        self.verts: Set[UnwindingVertex] = {eps}  # \( V \leftarrow \{ \epsilon \} \)
         # \( E \) is stored as successor lists on vertices
         # \( \psi \) is stored as labels on vertices
-        self.covering = set()  # \( \triangleright \)
+        self.covering: Set[Tuple[UnwindingVertex, UnwindingVertex]] = set()  # \( \triangleright \)
         # self.uncovered_verts caches uncovered vertices
         # \( \epsilon \) is initially uncovered
-        self.uncovered_leaves = {eps}
-        self.cfa = cfa  # cfa.verts is \( \Lambda \)
+        self.uncovered_leaves: Set[UnwindingVertex] = {eps}
+        self.cfa: ControlFlowAutomaton = cfa  # cfa.verts is \( \Lambda \)
         while self.uncovered_leaves:
             v = self.uncovered_leaves.pop()
             w = v.parent
@@ -120,12 +121,12 @@ class Unwinding:
                 w = w.parent
             self.dfs(v)
 
-    def close(self, v):
+    def close(self, v: UnwindingVertex) -> None:
         for w in self.verts:
             if w < v and w.location == v.location:
                 self.cover(v, w)
 
-    def dfs(self, v):
+    def dfs(self, v: UnwindingVertex) -> None:
         self.close(v)
         if v.covered or v.location != self.loc_entry:
             return
@@ -138,7 +139,7 @@ class Unwinding:
         for w in v.children():
             self.dfs(w)
 
-    def cover(self, v, w):
+    def cover(self, v: UnwindingVertex, w: UnwindingVertex) -> None:
         if v.covered or v.location != w.location or w.has_weak_ancestor(v):
             return
         if not models(v.label, w.label):
@@ -153,7 +154,7 @@ class Unwinding:
         self.uncovered_leaves.remove(v)
         # TODO: does this uncover anything? should anything be added to uncovered_leaves?
 
-    def refine(self, v):
+    def refine(self, v: UnwindingVertex) -> None:
         if v.location != self.loc_exit:
             return
         if models(v.label, False):
@@ -176,7 +177,7 @@ class Unwinding:
                 # TODO: does this uncover anything? should anything be added to uncovered_leaves?
                 z3.And(v_pi[i].label, phi)
 
-    def expand(self, v):
+    def expand(self, v: UnwindingVertex) -> None:
         if v.covered or v.children:
             return
         for m in cfa.successors(v.location):
