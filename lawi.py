@@ -1,7 +1,6 @@
 import sil
 from typing import List, Set, Optional, Tuple
 import z3
-from typing import Set, Tuple
 
 
 # Control flow automaton: directed graph with a command labelling each edge
@@ -132,6 +131,10 @@ class Unwinding:
             parent=None,
             transition=None,
         )
+
+        # If error path is not None, unwinding is unsafe
+        self._error_path = None
+
         self.verts: Set[UnwindingVertex] = {eps}  # \( V \leftarrow \{ \epsilon \} \)
         # \( E \) is stored as successor lists on vertices
         # \( \psi \) is stored as labels on vertices
@@ -157,6 +160,9 @@ class Unwinding:
                 self.cover(v, w)
 
     def dfs(self, v: UnwindingVertex) -> None:
+        if self.is_unsafe:
+            return
+
         self.close(v)
         if v.covered or v.location != self.loc_entry:
             return
@@ -193,8 +199,11 @@ class Unwinding:
         u_pi = list(timeshift(u_pi))
         assert(len(v_pi) == len(u_pi) + 1)
         # make_interpolant aborts if no interpolant exists
-        # TODO: catch make_interpolant expcetion and repackage it with current state
-        a_hat = z3.sequence_interpolant(u_pi)
+        try:
+            a_hat = z3.sequence_interpolant(u_pi)
+        except z3.ModelRef as model:
+            self.mark_unsafe(model)
+            return
         assert(len(a_hat) == len(v_pi))
         for i in range(len(a_hat)):
             phi = untimeshift(a_hat[i], -i)  # TODO: timeshift
@@ -205,6 +214,7 @@ class Unwinding:
                     if y == v_pi[i]
                 )
                 # TODO: does this uncover anything? should anything be added to uncovered_leaves?
+                # TODO what are the times when something becomes uncovered
                 z3.And(v_pi[i].label, phi)
 
     def expand(self, v: UnwindingVertex) -> None:
@@ -218,6 +228,17 @@ class Unwinding:
             )
             self.verts.add(w)
             self.uncovered_leaves.add(w)
+
+    def mark_unsafe(self, error_path: List[int]):
+        self._error_path = error_path
+
+    @property
+    def is_unsafe(self) -> bool:
+        return self._error_path is not None
+
+    @property
+    def error_path(self) -> List[int]:
+        return self._error_path
 
 
 def analyze_and_print(stmt):
