@@ -12,6 +12,7 @@ import z3
 from z3 import (
     And,
     Implies,
+    Int,
     Not,
     BoolVal,
     unsat,
@@ -20,38 +21,38 @@ from z3 import (
 
 # Control flow automaton: directed graph with a command labelling each edge
 class ControlFlowAutomaton:
-    def __init__(self):
-        self.max_loc = 0
-        self.succs = {}
-        self.labels = {}
-        self.entry = 0
+    def __init__(self) -> None:
+        self.max_loc: int = 0
+        self.succs: Dict[int, Set[int]] = {}
+        self.labels: Dict[Tuple[int, int], Command] = {}
+        self.entry: int = 0
 
-    def fresh_vertex(self):
+    def fresh_vertex(self) -> int:
         v = self.max_loc
         self.max_loc = v + 1
         self.succs[v] = set()
         return v
 
-    def add_edge(self, u, cmd, v):
+    def add_edge(self, u: int, cmd: Command, v: int) -> None:
         self.succs[u].add(v)
         self.labels[(u, v)] = cmd
 
-    def successors(self, v):
+    def successors(self, v: int) -> Set[int]:
         """Set of all successors of a given vertex"""
         return self.succs[v]
 
-    def command(self, u, v):
+    def command(self, u: int, v: int) -> Command:
         """The command associated with a given edge"""
         return self.labels[(u, v)]
 
-    def vars(self):
+    def vars(self) -> Set[str]:
         """The set of variables that appear in the CFA"""
-        vars = set()
+        vars: Set[str] = set()
         for command in self.labels.values():
             vars = vars | command.vars()
         return vars
 
-    def locations(self):
+    def locations(self) -> Set[int]:
         """The set of locations (vertices) in the CFA"""
         return set(range(self.max_loc))
 ############################################################################
@@ -70,9 +71,10 @@ def timeshift(u_pi: Iterable[Command]) -> Tuple[List[z3.BoolRef], Dict[str, int]
 
 
 def untimeshift(phi: z3.BoolRef, times: Dict[str, int]) -> z3.BoolRef:
-    for k, v in times:
+    for k, v in times.items():
         while v:
-            phi = z3.substitute(phi, Int(k + "'" * v), Int(k))
+            phi = z3.substitute(phi, Int(k + ("'" * v)), Int(k))
+            v -= 1
     return phi
 
 
@@ -131,7 +133,10 @@ class UnwindingVertex:
             self.covered,
         )
 
-    def has_weak_ancestor(self, other):  # \( self \sqsubseteq other \)
+    def __repr__(self):
+        return "vertex{}".format(self.num)
+
+    def has_weak_ancestor(self, other) -> bool:  # \( self \sqsubseteq other \)
         return self == other or (self.parent is not None and self.parent.has_weak_ancestor(other))
 
     def ancestors_path(self) -> Tuple[List['UnwindingVertex'], List[Command]]:
@@ -144,7 +149,7 @@ class UnwindingVertex:
         return v_pi, u_pi
 
     @property
-    def is_leaf():
+    def is_leaf(self) -> bool:
         return len(self.children) == 0
 
 
@@ -171,6 +176,7 @@ class Unwinding:
         self.cfa: ControlFlowAutomaton = cfa  # cfa.verts is \( \Lambda \)
         while self.uncovered_leaves:
             v = self.uncovered_leaves.pop()
+            print("Unwinding: " + repr(v))
             w = v.parent
             while w is not None:
                 self.close(w)
@@ -181,11 +187,13 @@ class Unwinding:
         return "\n".join(map(str, self.verts))
 
     def close(self, v: UnwindingVertex) -> None:
+        print("Closing: " + repr(v))
         for w in self.verts:
             if w < v and w.location == v.location:
                 self.cover(v, w)
 
     def dfs(self, v: UnwindingVertex) -> None:
+        print("Searching: " + repr(v))
         if self.is_unsafe:
             return
 
@@ -202,6 +210,7 @@ class Unwinding:
             self.dfs(w)
 
     def cover(self, v: UnwindingVertex, w: UnwindingVertex) -> None:
+        print("Covering: " + repr(v))
         if v.covered or v.location != w.location or w.has_weak_ancestor(v):
             return
         if not models(v.label, w.label):
@@ -221,6 +230,7 @@ class Unwinding:
         self.uncovered_leaves.remove(v)
 
     def refine(self, v: UnwindingVertex) -> None:
+        print("Refining: " + repr(v))
         if v.location != self.loc_exit:
             return
         if models(v.label, BoolVal(False)):
@@ -247,6 +257,7 @@ class Unwinding:
                 And(v_pi[i].label, phi)
 
     def expand(self, v: UnwindingVertex) -> None:
+        print("Expanding: " + repr(v))
         if v.covered or v.children:
             return
         for m in self.cfa.successors(v.location):
@@ -258,7 +269,7 @@ class Unwinding:
             self.verts.add(w)
             self.uncovered_leaves.add(w)
 
-    def mark_unsafe(self, error_path: List[int]):
+    def mark_unsafe(self, error_path: List[int]) -> None:
         self._error_path = error_path
 
     @property
