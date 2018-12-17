@@ -136,7 +136,7 @@ class Unwinding:
         )
 
         # If error path is not None, unwinding is unsafe
-        self._error_path = None
+        self._error_path: Optional[List[int]] = None
 
         self.verts: Set[UnwindingVertex] = {eps}  # \( V \leftarrow \{ \epsilon \} \)
         # \( E \) is stored as successor lists on vertices
@@ -240,7 +240,7 @@ class Unwinding:
         return self._error_path is not None
 
     @property
-    def error_path(self) -> List[int]:
+    def error_path(self) -> Optional[List[int]]:
         return self._error_path
 
 
