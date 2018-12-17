@@ -121,9 +121,6 @@ class UnwindingVertex:
         return self.num.__hash__()
 
     def __str__(self):
-        if self.is_unsafe:
-            return "Unsafe: {}".format(self.error_path)
-
         return "Vertex {}: parent {}, transition {}, location {}, label {}, covered {}".format(
             self.num,
             self.parent.num if self.parent is not None else None,
@@ -132,9 +129,6 @@ class UnwindingVertex:
             self.label,
             self.covered,
         )
-
-    def __repr__(self):
-        return "vertex{}".format(self.num)
 
     def has_weak_ancestor(self, other) -> bool:  # \( self \sqsubseteq other \)
         return self == other or (self.parent is not None and self.parent.has_weak_ancestor(other))
@@ -176,7 +170,7 @@ class Unwinding:
         self.cfa: ControlFlowAutomaton = cfa  # cfa.verts is \( \Lambda \)
         while self.uncovered_leaves:
             v = self.uncovered_leaves.pop()
-            print("Unwinding: " + repr(v))
+            print("Unwinding: " + str(v))
             w = v.parent
             while w is not None:
                 self.close(w)
@@ -184,33 +178,39 @@ class Unwinding:
             self.dfs(v)
 
     def __str__(self) -> str:
+        if self.is_unsafe:
+            return "Unsafe: {}".format(self.error_path)
+
         return "\n".join(map(str, self.verts))
 
     def close(self, v: UnwindingVertex) -> None:
-        print("Closing: " + repr(v))
+        print("Closing: " + str(v))
         for w in self.verts:
             if w < v and w.location == v.location:
                 self.cover(v, w)
 
     def dfs(self, v: UnwindingVertex) -> None:
-        print("Searching: " + repr(v))
+        print("Searching: " + str(v))
         if self.is_unsafe:
             return
 
         self.close(v)
-        if v.covered or v.location != self.loc_entry:
+        if v.covered:
             return
-        self.refine(v)
-        w: Optional[UnwindingVertex] = v
-        while w is not None:
-            self.close(w)
-            w = w.parent
+
+        if v.location == self.loc_entry:
+            self.refine(v)
+            w: Optional[UnwindingVertex] = v
+            while w is not None:
+                self.close(w)
+                w = w.parent
+
         self.expand(v)
         for w in v.children:
             self.dfs(w)
 
     def cover(self, v: UnwindingVertex, w: UnwindingVertex) -> None:
-        print("Covering: " + repr(v))
+        print("Covering: " + str(v))
         if v.covered or v.location != w.location or w.has_weak_ancestor(v):
             return
         if not models(v.label, w.label):
@@ -230,7 +230,7 @@ class Unwinding:
         self.uncovered_leaves.remove(v)
 
     def refine(self, v: UnwindingVertex) -> None:
-        print("Refining: " + repr(v))
+        print("Refining: " + str(v))
         if v.location != self.loc_exit:
             return
         if models(v.label, BoolVal(False)):
@@ -257,9 +257,11 @@ class Unwinding:
                 And(v_pi[i].label, phi)
 
     def expand(self, v: UnwindingVertex) -> None:
-        print("Expanding: " + repr(v))
+        print("Expanding: " + str(v))
         if v.covered or v.children:
             return
+        print(v.location)
+        print(self.cfa.successors(v.location))
         for m in self.cfa.successors(v.location):
             w = UnwindingVertex(
                 parent=v,
