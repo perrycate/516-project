@@ -116,6 +116,9 @@ class UnwindingVertex:
         return self.num.__hash__()
 
     def __str__(self):
+        if self.is_unsafe:
+            return "Unsafe: {}".format(self.error_path)
+
         return "Vertex {}: parent {}, transition {}, location {}, label {}, covered {}".format(
             self.num,
             self.parent.num if self.parent is not None else None,
