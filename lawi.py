@@ -137,6 +137,10 @@ class UnwindingVertex:
         u_pi.append(self.transition)
         return v_pi, u_pi
 
+    @property
+    def is_leaf():
+        return len(self.children) == 0
+
 
 class Unwinding:
     def __init__(self, cfa, loc_entry, loc_exit) -> None:
@@ -196,15 +200,19 @@ class Unwinding:
             return
         if not models(v.label, w.label):
             return
-        self.covering.add((v, w))
-        self.covering = set(
-            (x, y)
-            for (x, y) in self.covering
-            if not y.has_weak_ancestor(v)
-        )
+
+        # Uncover ancestors of v
+        for (x, y) in self.covering.copy():
+            if y.has_weak_ancestor(v):
+                self.covering.remove((x, y))
+
+                if y.is_leaf:
+                    self.uncovered_leaves.add(y)
+
+        # Cover v
         v.covered = True
+        self.covering.add((v, w))
         self.uncovered_leaves.remove(v)
-        # TODO: does this uncover anything? should anything be added to uncovered_leaves?
 
     def refine(self, v: UnwindingVertex) -> None:
         if v.location != self.loc_exit:
@@ -223,14 +231,14 @@ class Unwinding:
         assert(len(a_hat) == len(v_pi))
         for i in range(len(a_hat)):
             phi = untimeshift(a_hat[i])
+
             if not models(v_pi[i].label, phi):
-                self.covering = set(
-                    (x, y)
-                    for (x, y) in self.covering
-                    if y == v_pi[i]
-                )
-                # TODO: does this uncover anything? should anything be added to uncovered_leaves?
-                # TODO what are the times when something becomes uncovered
+                for (x, y) in self.covering.copy():
+                    if y == v_pi[i]:
+                        self.covering.remove((x, y))
+                        if y.is_leaf:
+                            self.uncovered_leaves.add(y)
+
                 And(v_pi[i].label, phi)
 
     def expand(self, v: UnwindingVertex) -> None:
