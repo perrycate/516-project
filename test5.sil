@@ -1,0 +1,12 @@
+x := 0;
+y := 0;
+while (x < 100) {
+  if (x < y or y < x) {
+     x := x + 1
+  } else {
+     y := y + x
+  };
+  x := x + 1
+};
+print(x);
+print(y)

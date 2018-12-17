@@ -100,7 +100,7 @@ class UnwindingVertex:
     def __hash__(self):
         return self.num.__hash__()
 
-    def __repr__(self):
+    def __str__(self):
         return "Vertex {}: parent {}, transition {}, location {}, label {}, covered {}".format(
             self.num,
             self.parent.num if self.parent is not None else None,
@@ -149,7 +149,7 @@ class Unwinding:
             self.dfs(v)
 
     def __str__(self) -> str:
-        return str(self.verts)
+        return "\n".join(map(str, self.verts))
 
     def close(self, v: UnwindingVertex) -> None:
         for w in self.verts:

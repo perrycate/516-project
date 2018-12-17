@@ -1,10 +1,17 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from sil import program
 from lawi import ControlFlowAutomaton, analyze_and_print
+import socket
 import sys
 import random
 
 if __name__ == '__main__':
+    if 'courselab' in socket.gethostname():
+        print('Initializing Z3')
+        z3.init('/u/cos516/z3/bin/')
+    else:
+        print('Not initializing Z3')
+
     if len(sys.argv) != 3:
         print("Usage: ./run_analysis.py [lawi|constant] file")
     else:

@@ -1,0 +1,10 @@
+x := 0;
+flag := 1;
+while (x<0){
+  crash := flag + x;
+  if (flag = 1) {
+    x := x + 1
+  } else {
+    flag := flag + 1
+  }
+}
