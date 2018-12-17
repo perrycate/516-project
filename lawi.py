@@ -1,5 +1,5 @@
 from collections import defaultdict
-import sil
+from sil import Command
 from typing import (
     Dict,
     Iterable,
@@ -8,15 +8,12 @@ from typing import (
     Set,
     Tuple,
 )
+import z3
 from z3 import (
-    BoolRef,
-    ModelRef,
-    Solver,
+    And,
     Implies,
     Not,
-    And,
     BoolVal,
-    sequence_interpolant,
     unsat,
 )
 
@@ -60,19 +57,19 @@ class ControlFlowAutomaton:
 ############################################################################
 
 
-def models(lhs: BoolRef, rhs: BoolRef) -> bool:
-    s = Solver()
+def models(lhs: z3.BoolRef, rhs: z3.BoolRef) -> bool:
+    s = z3.Solver()
     s.add(Not(Implies(lhs, rhs)))
     return s.check() == unsat
 
 
-def timeshift(u_pi: Iterable[sil.Command]) -> Iterable[BoolRef]:
+def timeshift(u_pi: Iterable[Command]) -> Iterable[z3.BoolRef]:
     vars_times: Dict[str, int] = defaultdict(int)
     for phi in u_pi:
         yield phi.to_time_form(vars_times)
 
 
-def untimeshift(phi: BoolRef) -> BoolRef:
+def untimeshift(phi: z3.BoolRef) -> z3.BoolRef:
     raise NotImplementedError()
 
 
@@ -82,7 +79,7 @@ class UnwindingVertex:
     def __init__(
             self,
             parent: Optional['UnwindingVertex'],
-            transition: Optional[sil.Command],
+            transition: Optional[Command],
             location: int,
     ) -> None:
         self.num: int = UnwindingVertex.next_num
@@ -90,11 +87,11 @@ class UnwindingVertex:
         self.parent: Optional['UnwindingVertex'] = parent
         if self.parent is not None:
             self.parent.children.add(self)
-        self.transition: Optional[sil.Command] = transition  # \( T \)
+        self.transition: Optional[Command] = transition  # \( T \)
         self.location: int = location  # \( M_v(self) \)
         # \( M_e(self.parent, self) \)
         self.children: Set['UnwindingVertex'] = set()
-        self.label: BoolRef = BoolVal(True)  # \( \psi(self) \)
+        self.label: z3.BoolRef = BoolVal(True)  # \( \psi(self) \)
         self.covered: bool = False
 
     def __lt__(self, other):  # \( \prec \)
@@ -131,7 +128,7 @@ class UnwindingVertex:
     def has_weak_ancestor(self, other):  # \( self \sqsubseteq other \)
         return self == other or (self.parent is not None and self.parent.has_weak_ancestor(other))
 
-    def ancestors_path(self) -> Tuple[List['UnwindingVertex'], List[sil.Command]]:
+    def ancestors_path(self) -> Tuple[List['UnwindingVertex'], List[Command]]:
         if self.parent is None:
             return [self], []
         assert self.transition is not None
@@ -219,8 +216,8 @@ class Unwinding:
         assert(len(v_pi) == len(u_pi) + 1)
         # make_interpolant aborts if no interpolant exists
         try:
-            a_hat = sequence_interpolant(u_pi)
-        except ModelRef as model:
+            a_hat = z3.sequence_interpolant(u_pi)
+        except z3.ModelRef as model:
             self.mark_unsafe(model)
             return
         assert(len(a_hat) == len(v_pi))

@@ -9,11 +9,14 @@ from pyparsing import (
     pyparsing_common,
 )
 from functools import reduce
-from typing import Dict, Set, Type
+from typing import (
+    Dict,
+    Set,
+    Type,
+)
+import z3
 from z3 import (
     And,
-    ArithRef,
-    BoolRef,
     BoolVal,
     Int,
     IntVal,
@@ -88,10 +91,10 @@ class Term(Expr):
     def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
         raise NotImplementedError()
 
-    def to_term(self) -> ArithRef:
+    def to_term(self) -> z3.ArithRef:
         raise NotImplementedError()
 
-    def to_time_term(self, times) -> ArithRef:
+    def to_time_term(self, times) -> z3.ArithRef:
         raise NotImplementedError()
 
 
@@ -99,10 +102,10 @@ class Form(Expr):
     def eval(self, state: Dict[str, int]) -> int:
         raise NotImplementedError()
 
-    def to_formula(self) -> BoolRef:
+    def to_formula(self) -> z3.BoolRef:
         raise NotImplementedError()
 
-    def to_time_form(self, times: Dict[str, int]) -> BoolRef:
+    def to_time_form(self, times: Dict[str, int]) -> z3.BoolRef:
         raise NotImplementedError()
 
 
@@ -121,7 +124,7 @@ class ExprVar(Term):
     def vars(self) -> Set[str]:
         return set([str(self)])
 
-    def to_term(self) -> ArithRef:
+    def to_term(self) -> z3.ArithRef:
         return Int(str(self))
 
 
@@ -139,7 +142,7 @@ class ExprNumeral(Term):
     def vars(self) -> Set[str]:
         return set()
 
-    def to_term(self) -> ArithRef:
+    def to_term(self) -> z3.ArithRef:
         return IntVal(self.value)
 
 
@@ -179,7 +182,7 @@ class ExprPlus(BinaryTermTerm):
     def __str__(self) -> str:
         return "(" + str(self.left) + " + " + str(self.right) + ")"
 
-    def to_term(self) -> ArithRef:
+    def to_term(self) -> z3.ArithRef:
         return self.left.to_term() + self.right.to_term()
 
 
@@ -194,7 +197,7 @@ class ExprNeg(Term):
     def __str__(self) -> str:
         return "-(" + str(self.expr) + ")"
 
-    def to_term(self) -> ArithRef:
+    def to_term(self) -> z3.ArithRef:
         return -self.expr.to_term()
 
     def vars(self) -> Set[str]:
@@ -209,7 +212,7 @@ class ExprMul(BinaryTermTerm):
     def __str__(self) -> str:
         return "(" + str(self.left) + " * " + str(self.right) + ")"
 
-    def to_term(self) -> ArithRef:
+    def to_term(self) -> z3.ArithRef:
         return self.left.to_term() * self.right.to_term()
 
 
@@ -221,7 +224,7 @@ class FormLt(BinaryTermForm):
     def __str__(self) -> str:
         return str(self.left) + " < " + str(self.right)
 
-    def to_formula(self) -> BoolRef:
+    def to_formula(self) -> z3.BoolRef:
         return self.left.to_term() < self.right.to_term()
 
 
@@ -233,7 +236,7 @@ class FormEq(BinaryTermForm):
     def __str__(self) -> str:
         return str(self.left) + " == " + str(self.right)
 
-    def to_formula(self) -> BoolRef:
+    def to_formula(self) -> z3.BoolRef:
         return self.left.to_term() == self.right.to_term()
 
 
@@ -245,7 +248,7 @@ class FormAnd(BinaryFormForm):
     def __str__(self) -> str:
         return "(" + str(self.left) + " and " + str(self.right) + ")"
 
-    def to_formula(self) -> BoolRef:
+    def to_formula(self) -> z3.BoolRef:
         return And(self.left.to_formula(), self.right.to_formula())
 
 
@@ -257,7 +260,7 @@ class FormOr(BinaryFormForm):
     def __str__(self) -> str:
         return "(" + str(self.left) + " or " + str(self.right) + ")"
 
-    def to_formula(self) -> BoolRef:
+    def to_formula(self) -> z3.BoolRef:
         return Or(self.left.to_formula(), self.right.to_formula())
 
 
@@ -275,7 +278,7 @@ class FormNot(Form):
     def vars(self) -> Set[str]:
         return self.phi.vars()
 
-    def to_formula(self) -> BoolRef:
+    def to_formula(self) -> z3.BoolRef:
         return Not(self.phi.to_formula())
 
 
@@ -288,7 +291,7 @@ class Command:
     def __str__(self) -> str:
         raise NotImplementedError()
 
-    def to_time_form(self, times: Dict[str, int]) -> BoolRef:
+    def to_time_form(self, times: Dict[str, int]) -> z3.BoolRef:
         raise NotImplementedError()
 
 
@@ -304,7 +307,7 @@ class CmdAssign(Command):
     def __str__(self) -> str:
         return "{} := {}".format(self.lhs, self.rhs)
 
-    def to_time_form(self, times: Dict[str, int]) -> BoolRef:
+    def to_time_form(self, times: Dict[str, int]) -> z3.BoolRef:
         rhs = self.rhs.to_time_term(times)
         times[self.lhs] += 1
         lhs = mk_var(self.lhs).to_time_term(times)
@@ -322,7 +325,7 @@ class CmdAssume(Command):
     def __str__(self) -> str:
         return "[{}]".format(self.condition)
 
-    def to_time_form(self, times: Dict[str, int]) -> BoolRef:
+    def to_time_form(self, times: Dict[str, int]) -> z3.BoolRef:
         self.condition.to_time_form(times)
 
 
@@ -337,7 +340,7 @@ class CmdPrint(Command):
     def __str__(self) -> str:
         return "print({})".format(self.expr)
 
-    def to_time_form(self, times: Dict[str, int]) -> BoolRef:
+    def to_time_form(self, times: Dict[str, int]) -> z3.BoolRef:
         return BoolVal(False)
 
 
