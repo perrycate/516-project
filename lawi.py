@@ -63,14 +63,17 @@ def models(lhs: z3.BoolRef, rhs: z3.BoolRef) -> bool:
     return s.check() == unsat
 
 
-def timeshift(u_pi: Iterable[Command]) -> Iterable[z3.BoolRef]:
+def timeshift(u_pi: Iterable[Command]) -> Tuple[List[z3.BoolRef], Dict[str, int]]:
     vars_times: Dict[str, int] = defaultdict(int)
-    for phi in u_pi:
-        yield phi.to_formula(vars_times)
+    ret = [phi.to_formula(vars_times) for phi in u_pi]
+    return ret, vars_times
 
 
-def untimeshift(phi: z3.BoolRef) -> z3.BoolRef:
-    raise NotImplementedError()
+def untimeshift(phi: z3.BoolRef, times: Dict[str, int]) -> z3.BoolRef:
+    for k, v in times:
+        while v:
+            phi = z3.substitute(phi, Int(k + "'" * v), Int(k))
+    return phi
 
 
 class UnwindingVertex:
@@ -223,7 +226,7 @@ class Unwinding:
         if models(v.label, BoolVal(False)):
             return
         v_pi, u_pi = v.ancestors_path()
-        u_pi = list(timeshift(u_pi))
+        u_pi, times = timeshift(u_pi)
         assert(len(v_pi) == len(u_pi) + 1)
         # make_interpolant aborts if no interpolant exists
         try:
@@ -233,8 +236,7 @@ class Unwinding:
             return
         assert(len(a_hat) == len(v_pi))
         for i in range(len(a_hat)):
-            phi = untimeshift(a_hat[i])
-
+            phi = untimeshift(a_hat[i], times)
             if not models(v_pi[i].label, phi):
                 for (x, y) in self.covering.copy():
                     if y == v_pi[i]:
