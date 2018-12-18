@@ -75,8 +75,8 @@ class StdInt(ArithStruct):
 #      / \                                     /     \
 #     3   4                           ExprNumeral  ExprNumeral
 # Each expression class is equipped with the methods:
-#    eval: takes in an arith-structure, a state (valuation over that structure), and
-#          produces a value in the arith-structure
+#    eval: takes in an arith-structure, a state (valuation over that structure),
+#          and produces a value in the arith-structure
 #    vars: the set of variables used in that expression
 # to_term: encode the expression as a Z3 term
 # Formulas are similar.
@@ -92,6 +92,9 @@ class Term(Expr):
     def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
         raise NotImplementedError()
 
+    def __str__(self) -> str:
+        return str(self.to_term())
+
     def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
         raise NotImplementedError()
 
@@ -99,6 +102,9 @@ class Term(Expr):
 class Form(Expr):
     def eval(self, state: Dict[str, int]) -> int:
         raise NotImplementedError()
+
+    def __str__(self) -> str:
+        return str(self.to_formula())
 
     def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
         raise NotImplementedError()
@@ -119,7 +125,7 @@ class ExprVar(Term):
         return set([str(self)])
 
     def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
-        return Int(str(self) + "'" * (times[str(self)] if times is not None else 0))
+        return Int(str(self) + "'" * (0 if times is None else times[str(self)]))
 
 
 class ExprNumeral(Term):
@@ -171,7 +177,10 @@ class BinaryFormForm(BinaryExpr, Form):
 class ExprPlus(BinaryTermTerm):
     """Addition"""
     def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
-        return struct.add(self.left.eval(struct, state), self.right.eval(struct, state))
+        return struct.add(
+            self.left.eval(struct, state),
+            self.right.eval(struct, state),
+        )
 
     def __str__(self) -> str:
         return "(" + str(self.left) + " + " + str(self.right) + ")"
@@ -201,7 +210,10 @@ class ExprNeg(Term):
 class ExprMul(BinaryTermTerm):
     """Multiplication"""
     def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
-        return struct.mul(self.left.eval(struct, state), self.right.eval(struct, state))
+        return struct.mul(
+            self.left.eval(struct, state),
+            self.right.eval(struct, state),
+        )
 
     def __str__(self) -> str:
         return "(" + str(self.left) + " * " + str(self.right) + ")"
@@ -285,6 +297,9 @@ class Command:
     def __str__(self) -> str:
         raise NotImplementedError()
 
+    def __repr__(self) -> str:
+        return "{}('{}')".format(self.__class__.__name__, str(self))
+
     def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
         raise NotImplementedError()
 
@@ -305,6 +320,7 @@ class CmdAssign(Command):
         rhs = self.rhs.to_term(times)
         if times is not None:
             times[self.lhs] += 1
+
         lhs = ExprVar(self.lhs).to_term(times)
         return lhs == rhs
 
@@ -449,6 +465,7 @@ class StmtBlock(Stmt):
             nxt = cfa.fresh_vertex()
             self.block[i].to_cfa(cfa, last, nxt)
             last = nxt
+
         self.block[len(self.block) - 1].to_cfa(cfa, last, v)
 
 
@@ -516,6 +533,7 @@ def mk_plus_minus(toks):
             curr = ExprPlus(curr, toks[0][i + 1])
         else:
             curr = ExprPlus(curr, ExprNeg(toks[0][i + 1]))
+
     return [curr]
 
 
@@ -545,8 +563,10 @@ def mk_atom(toks):
     elif toks[1] == "<":
         return FormLt(toks[0], toks[2])
     else:
-        return FormOr(FormLt(toks[0], toks[2]),
-                      FormEq(toks[0], toks[2]))
+        return FormOr(
+            FormLt(toks[0], toks[2]),
+            FormEq(toks[0], toks[2]),
+        )
 
 
 def mk_assign(toks):
@@ -578,18 +598,26 @@ var = pyparsing_common.identifier
 integer.setParseAction(mk_numeral)
 var.setParseAction(mk_var)
 
-expr = infixNotation(integer | var,
-                     [('-', 1, opAssoc.RIGHT, mk_neg),
-                      ('*', 2, opAssoc.LEFT, mk_mul),
-                      (oneOf('+ -'), 2, opAssoc.LEFT, mk_plus_minus)])
+expr = infixNotation(
+    integer | var,
+    [
+        ('-', 1, opAssoc.RIGHT, mk_neg),
+        ('*', 2, opAssoc.LEFT, mk_mul),
+        (oneOf('+ -'), 2, opAssoc.LEFT, mk_plus_minus),
+    ],
+)
 
 atom = expr + (Literal("<=") | Literal("<") | Literal("=")) + expr
 atom.setParseAction(mk_atom)
 
-formula = infixNotation(atom,
-                        [("not", 1, opAssoc.RIGHT, mk_not),
-                         ("and", 2, opAssoc.LEFT, mk_and),
-                         ("or", 2, opAssoc.LEFT, mk_or)])
+formula = infixNotation(
+    atom,
+    [
+        ("not", 1, opAssoc.RIGHT, mk_not),
+        ("and", 2, opAssoc.LEFT, mk_and),
+        ("or", 2, opAssoc.LEFT, mk_or),
+    ],
+)
 
 
 block = Forward()
