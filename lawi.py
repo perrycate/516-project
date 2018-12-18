@@ -64,7 +64,7 @@ class UnwindingVertex(Annotation):
         # \( M_e(self.parent, self) \)
         self.children: Set['UnwindingVertex'] = set()
         self.label: z3.BoolRef = BoolVal(True)  # \( \psi(self) \)
-        self._covered: bool = False
+        self.covered: bool = False
 
     def __lt__(self, other: Any) -> bool:  # \( \prec \)
         return isinstance(other, UnwindingVertex) and self.num < other.num
@@ -123,10 +123,6 @@ class UnwindingVertex(Annotation):
     @property
     def is_leaf(self) -> bool:
         return len(self.children) == 0
-
-    @property
-    def covered(self) -> bool:
-        return self._covered
 
 
 class Unwinding(Annotation):
@@ -238,14 +234,33 @@ class Unwinding(Annotation):
         # Uncover ancestors of v
         for (x, y) in self.covering.copy():
             if y.has_weak_ancestor(v):
-                self.covering.remove((x, y))
-                if y.is_leaf:
-                    self.uncovered_leaves.add(y)
+                self.uncover(y)
 
         # Cover v
         v.covered = True
         self.covering.add((v, w))
         self.uncovered_leaves.discard(v)
+
+    def uncover(self, y: UnwindingVertex) -> None:
+        discarded = 0
+
+        # Discard whatever covers this vertex
+        for x in self.verts:
+            if (x, y) in self.covering:
+                self.covering.remove((x, y))
+                discarded += 1
+
+        # Sanity check
+        assert discarded == 1, "Vertex {} was covered {} times!".format(
+            y.num,
+            discarded,
+        )
+
+        if y.is_leaf:
+            self.uncovered_leaves.add(y)
+
+        y.covered = False
+
 
     def refine(self, v: UnwindingVertex) -> None:
         logging.debug("Refining: " + str(v))
@@ -270,9 +285,7 @@ class Unwinding(Annotation):
             if not models(v_pi[i+2].label, phi):
                 for (x, y) in self.covering.copy():
                     if y == v_pi[i+2]:
-                        self.covering.remove((x, y))
-                        if y.is_leaf:
-                            self.uncovered_leaves.add(y)
+                        self.uncover(y)
 
                 v_pi[i+2].label = z3.simplify(And(v_pi[i+2].label, phi))
 
@@ -289,6 +302,7 @@ class Unwinding(Annotation):
             )
             self.verts.add(w)
             self.uncovered_leaves.add(w)
+            # We are no longer a leaf
             self.uncovered_leaves.discard(v)
 
     def mark_unsafe(
