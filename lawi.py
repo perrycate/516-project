@@ -249,7 +249,6 @@ class Unwinding:
         assert(len(v_pi) == len(a_hat) + 2)
         for i in range(len(a_hat)):
             phi = untimeshift(a_hat[i], times)
-            # TODO index errors: what is it doing with the interpolant?
             if not models(v_pi[i].label, phi):
                 for (x, y) in self.covering.copy():
                     if y == v_pi[i]:
@@ -257,7 +256,7 @@ class Unwinding:
                         if y.is_leaf:
                             self.uncovered_leaves.add(y)
 
-                And(v_pi[i].label, phi)
+                v_pi[i].label = And(v_pi[i].label, phi)
 
     def expand(self, v: UnwindingVertex) -> None:
         print("Expanding: " + str(v))
