@@ -1,7 +1,8 @@
 from collections import defaultdict
 import logging
-from sil import Command
+from sil import Annotation, Command, ControlFlowAutomaton, Stmt
 from typing import (
+    Any,
     Dict,
     Iterable,
     List,
@@ -18,52 +19,12 @@ from z3 import (
     BoolVal,
     unsat,
 )
-import code
-
-
-# Control flow automaton: directed graph with a command labelling each edge
-class ControlFlowAutomaton:
-    def __init__(self) -> None:
-        self.max_loc: int = 0
-        self.succs: Dict[int, Set[int]] = {}
-        self.labels: Dict[Tuple[int, int], Command] = {}
-        self.entry: int = 0
-
-    def fresh_vertex(self) -> int:
-        v = self.max_loc
-        self.max_loc = v + 1
-        self.succs[v] = set()
-        return v
-
-    def add_edge(self, u: int, cmd: Command, v: int) -> None:
-        self.succs[u].add(v)
-        self.labels[(u, v)] = cmd
-
-    def successors(self, v: int) -> Set[int]:
-        """Set of all successors of a given vertex"""
-        return self.succs[v]
-
-    def command(self, u: int, v: int) -> Command:
-        """The command associated with a given edge"""
-        return self.labels[(u, v)]
-
-    def vars(self) -> Set[str]:
-        """The set of variables that appear in the CFA"""
-        vars: Set[str] = set()
-        for command in self.labels.values():
-            vars = vars | command.vars()
-        return vars
-
-    def locations(self) -> Set[int]:
-        """The set of locations (vertices) in the CFA"""
-        return set(range(self.max_loc))
-############################################################################
 
 
 def models(lhs: z3.BoolRef, rhs: z3.BoolRef) -> bool:
     s = z3.Solver()
     s.add(Not(Implies(lhs, rhs)))
-    return s.check() == unsat
+    return bool(unsat == s.check())
 
 
 def timeshift(
@@ -83,7 +44,7 @@ def untimeshift(phi: z3.BoolRef, times: Dict[str, int]) -> z3.BoolRef:
     return phi
 
 
-class UnwindingVertex:
+class UnwindingVertex(Annotation):
     next_num: int = 0
 
     def __init__(
@@ -105,28 +66,28 @@ class UnwindingVertex:
         self.label: z3.BoolRef = BoolVal(True)  # \( \psi(self) \)
         self.covered: bool = False
 
-    def __lt__(self, other):  # \( \prec \)
-        return self.num < other.num
+    def __lt__(self, other: Any) -> bool:  # \( \prec \)
+        return isinstance(other, UnwindingVertex) and self.num < other.num
 
-    def __le__(self, other):
-        return self.num <= other.num
+    def __le__(self, other: Any) -> bool:
+        return isinstance(other, UnwindingVertex) and self.num <= other.num
 
-    def __eq__(self, other):
-        return self.num == other.num
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, UnwindingVertex) and self.num == other.num
 
-    def __gt__(self, other):
-        return self.num > other.num
+    def __gt__(self, other: Any) -> bool:
+        return isinstance(other, UnwindingVertex) and self.num > other.num
 
-    def __ge__(self, other):
-        return self.num >= other.num
+    def __ge__(self, other: Any) -> bool:
+        return isinstance(other, UnwindingVertex) and self.num >= other.num
 
-    def __ne__(self, other):
-        return self.num != other.num
+    def __ne__(self, other: Any) -> bool:
+        return isinstance(other, UnwindingVertex) and self.num != other.num
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return self.num.__hash__()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (
             "Vertex {}:"
             " parent {},"
@@ -143,7 +104,8 @@ class UnwindingVertex:
             self.covered,
         )
 
-    def has_weak_ancestor(self, other) -> bool:  # \( self \sqsubseteq other \)
+    # \( self \sqsubseteq other \)
+    def has_weak_ancestor(self, other: 'UnwindingVertex') -> bool:
         return self == other or (
             self.parent is not None and self.parent.has_weak_ancestor(other)
         )
@@ -163,8 +125,13 @@ class UnwindingVertex:
         return len(self.children) == 0
 
 
-class Unwinding:
-    def __init__(self, cfa, loc_entry, loc_exit) -> None:
+class Unwinding(Annotation):
+    def __init__(
+            self,
+            cfa: ControlFlowAutomaton,
+            loc_entry: int,
+            loc_exit: int
+    ) -> None:
         self.loc_entry: int = loc_entry  # \( l_i \)
         self.loc_exit: int = loc_exit  # \( l_f \)
         eps = UnwindingVertex(
@@ -319,13 +286,17 @@ class Unwinding:
         formatStr = "\n" + (indent + 1) * "    " + "{}"
         return "Location {}:{}".format(
             loc,
-            "".join(formatStr.format(v) for v in self.verts if v.location == loc),
+            "".join(
+                formatStr.format(v)
+                for v in self.verts
+                if v.location == loc
+            ),
         )
 
-
-def analyze(stmt):
-    cfa = ControlFlowAutomaton()
-    loc_entry = cfa.fresh_vertex()
-    loc_exit = cfa.fresh_vertex()
-    stmt.to_cfa(cfa, loc_entry, loc_exit)
-    return Unwinding(cfa, loc_entry, loc_exit)
+    @staticmethod
+    def analyze(stmt: Stmt) -> 'Unwinding':
+        cfa = ControlFlowAutomaton()
+        loc_entry = cfa.fresh_vertex()
+        loc_exit = cfa.fresh_vertex()
+        stmt.to_cfa(cfa, loc_entry, loc_exit)
+        return Unwinding(cfa, loc_entry, loc_exit)

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-from lawi import ControlFlowAutomaton, analyze
+from lawi import Unwinding
 import logging
 import random
-from sil import program
+from sil import ControlFlowAutomaton, program
 import sys
 from test_lawi import init_z3
 
@@ -18,7 +18,7 @@ if __name__ == '__main__':
 
     pgm = program.parseFile(sys.argv[2], parseAll=True)[0]
     if (sys.argv[1] == "lawi"):
-        unwinding = analyze(pgm)
+        unwinding = Unwinding.analyze(pgm)
         print(unwinding)
         print(pgm.annotation(unwinding))
         print("{{{}\n}}".format(unwinding.get_entry(unwinding.loc_exit)))

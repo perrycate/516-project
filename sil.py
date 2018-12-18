@@ -10,10 +10,13 @@ from pyparsing import (
 )
 from functools import reduce
 from typing import (
+    Any,
     Dict,
     List,
     Optional,
+    Sequence,
     Set,
+    Tuple,
     Type,
 )
 import z3
@@ -101,7 +104,7 @@ class Term(Expr):
 
 
 class Form(Expr):
-    def eval(self, state: Dict[str, int]) -> int:
+    def eval(self, state: Dict[str, int]) -> bool:
         raise NotImplementedError()
 
     def __str__(self) -> str:
@@ -225,7 +228,7 @@ class ExprMul(BinaryTermTerm):
 
 class FormLt(BinaryTermForm):
     """Strictly less-than"""
-    def eval(self, state: Dict[str, int]) -> int:
+    def eval(self, state: Dict[str, int]) -> bool:
         return self.left.eval(StdInt, state) < self.right.eval(StdInt, state)
 
     def __str__(self) -> str:
@@ -237,7 +240,7 @@ class FormLt(BinaryTermForm):
 
 class FormEq(BinaryTermForm):
     """Equal to"""
-    def eval(self, state: Dict[str, int]) -> int:
+    def eval(self, state: Dict[str, int]) -> bool:
         return self.left.eval(StdInt, state) == self.right.eval(StdInt, state)
 
     def __str__(self) -> str:
@@ -249,7 +252,7 @@ class FormEq(BinaryTermForm):
 
 class FormAnd(BinaryFormForm):
     """And"""
-    def eval(self, state: Dict[str, int]) -> int:
+    def eval(self, state: Dict[str, int]) -> bool:
         return self.left.eval(state) and self.right.eval(state)
 
     def __str__(self) -> str:
@@ -261,7 +264,7 @@ class FormAnd(BinaryFormForm):
 
 class FormOr(BinaryFormForm):
     """Or"""
-    def eval(self, state: Dict[str, int]) -> int:
+    def eval(self, state: Dict[str, int]) -> bool:
         return self.left.eval(state) or self.right.eval(state)
 
     def __str__(self) -> str:
@@ -276,7 +279,7 @@ class FormNot(Form):
     def __init__(self, phi: Form) -> None:
         self.phi = phi
 
-    def eval(self, state: Dict[str, int]) -> int:
+    def eval(self, state: Dict[str, int]) -> bool:
         return not (self.phi.eval(state))
 
     def __str__(self) -> str:
@@ -356,6 +359,54 @@ class CmdPrint(Command):
         return BoolVal(False)
 
 
+# Control flow automaton: directed graph with a command labelling each edge
+class ControlFlowAutomaton:
+    def __init__(self) -> None:
+        self.max_loc: int = 0
+        self.succs: Dict[int, Set[int]] = {}
+        self.labels: Dict[Tuple[int, int], Command] = {}
+        self.entry: int = 0
+
+    def fresh_vertex(self) -> int:
+        v = self.max_loc
+        self.max_loc = v + 1
+        self.succs[v] = set()
+        return v
+
+    def add_edge(self, u: int, cmd: Command, v: int) -> None:
+        self.succs[u].add(v)
+        self.labels[(u, v)] = cmd
+
+    def successors(self, v: int) -> Set[int]:
+        """Set of all successors of a given vertex"""
+        return self.succs[v]
+
+    def command(self, u: int, v: int) -> Command:
+        """The command associated with a given edge"""
+        return self.labels[(u, v)]
+
+    def vars(self) -> Set[str]:
+        """The set of variables that appear in the CFA"""
+        vars: Set[str] = set()
+        for command in self.labels.values():
+            vars = vars | command.vars()
+        return vars
+
+    def locations(self) -> Set[int]:
+        """The set of locations (vertices) in the CFA"""
+        return set(range(self.max_loc))
+############################################################################
+
+
+class Annotation:
+    def get_entry(self, loc: int, indent: int = 0) -> str:
+        raise NotImplementedError()
+
+    @staticmethod
+    def analyze(stmt: 'Stmt') -> 'Annotation':
+        raise NotImplementedError()
+
+
 ############################################################################
 # Statements are program phrases that can change the state of the program.
 # Again, each statement is equipped with three methods:
@@ -370,18 +421,18 @@ class CmdPrint(Command):
 class Stmt:
     """Statements"""
     def __init__(self) -> None:
-        self.entry = None
+        self.entry: Optional[int] = None
 
     def __str__(self, indent: int = 0) -> str:
         raise NotImplementedError()
 
-    def annotation(self, annotation, indent: int = 0) -> str:
+    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
         raise NotImplementedError()
 
-    def to_cfa(self, cfa, u, v):
+    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
         raise NotImplementedError()
 
-    def execute(self, struct, state):
+    def execute(self, state: Dict[str, int]) -> None:
         raise NotImplementedError()
 
 
@@ -391,20 +442,21 @@ class StmtAssign(Stmt):
         self.lhs = lhs
         self.rhs = rhs
 
-    def execute(self, state):
+    def execute(self, state: Dict[str, int]) -> None:
         state[self.lhs] = self.rhs.eval(StdInt, state)
 
     def __str__(self, indent: int = 0) -> str:
         return ("    " * indent) + self.lhs + " = " + str(self.rhs)
 
-    def annotation(self, annotation, indent: int = 0) -> str:
+    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+        assert self.entry is not None
         return "{0}{{{1}\n{0}}}\n{2}".format(
             "    " * indent,
             annotation.get_entry(self.entry, indent),
             self.__str__(indent),
         )
 
-    def to_cfa(self, cfa, u, v):
+    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
         self.entry = u
         cfa.add_edge(u, CmdAssign(self.lhs, self.rhs), v)
 
@@ -416,7 +468,7 @@ class StmtIf(Stmt):
         self.bthen = bthen
         self.belse = belse
 
-    def execute(self, state):
+    def execute(self, state: Dict[str, int]) -> None:
         if (self.cond.eval(state)):
             self.bthen.execute(state)
         else:
@@ -429,7 +481,8 @@ class StmtIf(Stmt):
         program += self.belse.__str__(indent + 1)
         return program
 
-    def annotation(self, annotation, indent: int = 0) -> str:
+    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+        assert self.entry is not None
         return "{0}{{{1}\n{0}}}\n{0}if {2}:\n{3}\n{0}else:\n{4}".format(
             "    " * indent,
             annotation.get_entry(self.entry, indent),
@@ -438,7 +491,7 @@ class StmtIf(Stmt):
             self.belse.annotation(annotation, indent + 1),
         )
 
-    def to_cfa(self, cfa, u, v):
+    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
         self.entry = u
         then_target = cfa.fresh_vertex()
         else_target = cfa.fresh_vertex()
@@ -450,20 +503,24 @@ class StmtIf(Stmt):
 
 class StmtBlock(Stmt):
     """Sequence of statements"""
-    def __init__(self, block: List[Stmt]) -> None:
+    def __init__(self, block: Sequence[Stmt]) -> None:
         self.block = block
 
-    def execute(self, state):
+    def execute(self, state: Dict[str, int]) -> None:
         for stmt in self.block:
             stmt.execute(state)
 
     def __str__(self, indent: int = 0) -> str:
         return "\n".join(map(lambda x: x.__str__(indent), self.block))
 
-    def annotation(self, annotation, indent: int = 0) -> str:
-        return "\n".join(stmt.annotation(annotation, indent) for stmt in self.block)
+    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+        assert self.entry is not None
+        return "\n".join(
+            stmt.annotation(annotation, indent)
+            for stmt in self.block
+        )
 
-    def to_cfa(self, cfa, u, v):
+    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
         self.entry = u
         last = u
         for i in range(len(self.block) - 1):
@@ -480,7 +537,7 @@ class StmtWhile(Stmt):
         self.cond = cond
         self.body = body
 
-    def execute(self, state):
+    def execute(self, state: Dict[str, int]) -> None:
         while self.cond.eval(state):
             self.body.execute(state)
 
@@ -489,7 +546,8 @@ class StmtWhile(Stmt):
         program += self.body.__str__(indent + 1)
         return program
 
-    def annotation(self, annotation, indent: int = 0) -> str:
+    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+        assert self.entry is not None
         return "{0}{{{1}\n{0}}}\n{0}while {2}:\n{3}".format(
             "    " * indent,
             str(annotation.get_entry(self.entry, indent)),
@@ -497,7 +555,7 @@ class StmtWhile(Stmt):
             self.body.annotation(annotation, indent + 1),
         )
 
-    def to_cfa(self, cfa, u, v):
+    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
         self.entry = u
         w = cfa.fresh_vertex()
         cfa.add_edge(u, CmdAssume(self.cond), w)
@@ -507,37 +565,38 @@ class StmtWhile(Stmt):
 
 class StmtPrint(Stmt):
     """Print to stdout"""
-    def __init__(self, expr: Expr) -> None:
+    def __init__(self, expr: Term) -> None:
         self.expr = expr
 
-    def execute(self, state):
+    def execute(self, state: Dict[str, int]) -> None:
         print(self.expr.eval(StdInt, state))
 
     def __str__(self, indent: int = 0) -> str:
         return ("    " * indent) + "print(" + str(self.expr) + ")"
 
-    def annotation(self, annotation, indent: int = 0) -> str:
+    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+        assert self.entry is not None
         return "{0}{{{1}\n{0}}}\n{0}print({2})".format(
             "    " * indent,
             str(annotation.get_entry(self.entry, indent)),
             str(self.expr),
         )
 
-    def to_cfa(self, cfa, u, v):
+    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
         self.entry = u
         cfa.add_edge(u, CmdPrint(self.expr), v)
 ############################################################################
 
 
-def mk_numeral(toks):
+def mk_numeral(toks: Sequence[str]) -> List[ExprNumeral]:
     return [ExprNumeral(int(toks[0]))]
 
 
-def mk_var(toks):
+def mk_var(toks: Sequence[str]) -> List[ExprVar]:
     return [ExprVar(str(toks[0]))]
 
 
-def mk_plus_minus(toks):
+def mk_plus_minus(toks: Sequence[Sequence[Term]]) -> List[Term]:
     curr = toks[0][0]
     for i in range(1, len(toks[0]), 2):
         if toks[0][i] == "+":
@@ -548,27 +607,27 @@ def mk_plus_minus(toks):
     return [curr]
 
 
-def mk_mul(toks):
+def mk_mul(toks: Sequence[Sequence[Term]]) -> List[Term]:
     return [reduce(ExprMul, toks[0][0::2])]
 
 
-def mk_neg(toks):
+def mk_neg(toks: Sequence[Sequence[Term]]) -> List[ExprNeg]:
     return [ExprNeg(toks[0][1])]
 
 
-def mk_not(toks):
+def mk_not(toks: Sequence[Sequence[Form]]) -> List[FormNot]:
     return [FormNot(toks[0][1])]
 
 
-def mk_and(toks):
+def mk_and(toks: Sequence[Sequence[Form]]) -> List[Form]:
     return [reduce(FormAnd, toks[0][0::2])]
 
 
-def mk_or(toks):
+def mk_or(toks: Sequence[Sequence[Form]]) -> List[Form]:
     return [reduce(FormOr, toks[0][0::2])]
 
 
-def mk_atom(toks):
+def mk_atom(toks: Sequence[Term]) -> Form:
     if toks[1] == "=":
         return FormEq(toks[0], toks[2])
     elif toks[1] == "<":
@@ -580,26 +639,26 @@ def mk_atom(toks):
         )
 
 
-def mk_assign(toks):
+def mk_assign(toks: Sequence[Term]) -> StmtAssign:
     return StmtAssign(str(toks[0]), toks[2])
 
 
-def mk_block(toks):
+def mk_block(toks: Sequence[Stmt]) -> Stmt:
     if len(toks) == 1:
         return toks[0]
     else:
         return StmtBlock(toks)
 
 
-def mk_while(toks):
+def mk_while(toks: Tuple[Any, Form, Stmt]) -> StmtWhile:
     return StmtWhile(toks[1], toks[2])
 
 
-def mk_if(toks):
+def mk_if(toks: Tuple[Any, Form, Stmt, Stmt]) -> StmtIf:
     return StmtIf(toks[1], toks[2], toks[3])
 
 
-def mk_print(toks):
+def mk_print(toks: Tuple[Any, Term]) -> StmtPrint:
     return StmtPrint(toks[1])
 
 
@@ -635,9 +694,23 @@ block = Forward()
 assign_stmt = varname + ":=" + expr
 if_stmt = Keyword("if") + formula + block + Keyword("else").suppress() + block
 while_stmt = Keyword("while") + formula + block
-print_stmt = Literal("print") + Literal('(').suppress() + expr + Literal(')').suppress()
+print_stmt = (
+    Literal("print")
+) + (
+    Literal('(').suppress()
+) + (
+    expr
+) + (
+    Literal(')').suppress()
+)
 stmt = if_stmt ^ while_stmt ^ print_stmt ^ assign_stmt
-block << Literal('{').suppress() + delimitedList(stmt, delim=';') + Literal('}').suppress()
+block << (
+    Literal('{').suppress()
+) + (
+    delimitedList(stmt, delim=';')
+) + (
+    Literal('}').suppress()
+)
 program = delimitedList(stmt, delim=';')
 assign_stmt.setParseAction(mk_assign)
 if_stmt.setParseAction(mk_if)
