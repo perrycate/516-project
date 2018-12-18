@@ -1,4 +1,5 @@
 from collections import defaultdict
+import logging
 from sil import Command
 from typing import (
     Dict,
@@ -189,7 +190,7 @@ class Unwinding:
         self.cfa: ControlFlowAutomaton = cfa  # cfa.verts is \( \Lambda \)
         while self.uncovered_leaves:
             v = self.uncovered_leaves.pop()
-            print("Unwinding: " + str(v))
+            logging.debug("Unwinding: " + str(v))
             w = v.parent
             while w is not None:
                 self.close(w)
@@ -205,16 +206,18 @@ class Unwinding:
                 "".join(map("\n\t{}".format, error_path))
             )
 
-        return "\n".join(map(str, self.verts))
+        return "Safe: {}".format(
+            "".join(map("\n\t{}".format, self.verts)),
+        )
 
     def close(self, v: UnwindingVertex) -> None:
-        print("Closing: " + str(v))
+        logging.debug("Closing: " + str(v))
         for w in self.verts:
             if w < v and w.location == v.location:
                 self.cover(v, w)
 
     def dfs(self, v: UnwindingVertex) -> None:
-        print("Searching: " + str(v))
+        logging.debug("Searching: " + str(v))
         if self.is_unsafe:
             return
 
@@ -234,7 +237,7 @@ class Unwinding:
             self.dfs(w)
 
     def cover(self, v: UnwindingVertex, w: UnwindingVertex) -> None:
-        print("Covering: " + str(v))
+        logging.debug("Covering: " + str(v))
         if v.covered or v.location != w.location or w.has_weak_ancestor(v):
             return
         if not models(v.label, w.label):
@@ -253,7 +256,7 @@ class Unwinding:
         self.uncovered_leaves.remove(v)
 
     def refine(self, v: UnwindingVertex) -> None:
-        print("Refining: " + str(v))
+        logging.debug("Refining: " + str(v))
         if v.location != self.loc_exit:
             return
         if models(v.label, BoolVal(False)):
@@ -282,12 +285,10 @@ class Unwinding:
                 v_pi[i].label = z3.simplify(And(v_pi[i].label, phi))
 
     def expand(self, v: UnwindingVertex) -> None:
-        print("Expanding: " + str(v))
+        logging.debug("Expanding: " + str(v))
         if v.covered or v.children:
             return
 
-        print(v.location)
-        print(self.cfa.successors(v.location))
         for m in self.cfa.successors(v.location):
             w = UnwindingVertex(
                 parent=v,
@@ -326,4 +327,5 @@ def analyze_and_print(stmt):
     print(annotation)
     stmt.print_annotation(annotation, 0)
     print("{" + str(annotation[loc_exit]) + "}")
-    code.interact(local=locals())
+    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+        code.interact(local=locals())

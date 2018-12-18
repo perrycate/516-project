@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
+import logging
 import socket
 import unittest
 import z3
 
-if __name__ == '__main__':
+
+def init_z3(z3path: str = '/u/cos516/z3/bin/') -> None:
     if 'courselab' in socket.gethostname():
-        print('Initializing Z3')
-        z3.init('/u/cos516/z3/bin/')
+        logging.info('Initializing Z3 at path: {}'.format(z3path))
+        z3.init(z3path)
     else:
-        print('Not initializing Z3')
+        logging.info('Not initializing Z3')
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
+    init_z3()
     unittest.main()
