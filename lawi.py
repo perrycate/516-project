@@ -65,7 +65,9 @@ def models(lhs: z3.BoolRef, rhs: z3.BoolRef) -> bool:
     return s.check() == unsat
 
 
-def timeshift(u_pi: Iterable[Command]) -> Tuple[List[z3.BoolRef], Dict[str, int]]:
+def timeshift(
+        u_pi: Iterable[Command]
+) -> Tuple[List[z3.BoolRef], Dict[str, int]]:
     vars_times: Dict[str, int] = defaultdict(int)
     ret = [phi.to_formula(vars_times) for phi in u_pi]
     return ret, vars_times
@@ -76,6 +78,7 @@ def untimeshift(phi: z3.BoolRef, times: Dict[str, int]) -> z3.BoolRef:
         while v:
             phi = z3.substitute(phi, (Int(k + ("'" * v)), Int(k)))
             v -= 1
+
     return phi
 
 
@@ -93,6 +96,7 @@ class UnwindingVertex:
         self.parent: Optional['UnwindingVertex'] = parent
         if self.parent is not None:
             self.parent.children.add(self)
+
         self.transition: Optional[Command] = transition  # \( T \)
         self.location: int = location  # \( M_v(self) \)
         # \( M_e(self.parent, self) \)
@@ -122,7 +126,14 @@ class UnwindingVertex:
         return self.num.__hash__()
 
     def __str__(self):
-        return "Vertex {}: parent {}, transition {}, location {}, label {}, covered {}".format(
+        return (
+            "Vertex {}:"
+            " parent {},"
+            " transition {},"
+            " location {},"
+            " label {},"
+            " covered {}"
+        ).format(
             self.num,
             self.parent.num if self.parent is not None else None,
             self.transition,
@@ -132,11 +143,14 @@ class UnwindingVertex:
         )
 
     def has_weak_ancestor(self, other) -> bool:  # \( self \sqsubseteq other \)
-        return self == other or (self.parent is not None and self.parent.has_weak_ancestor(other))
+        return self == other or (
+            self.parent is not None and self.parent.has_weak_ancestor(other)
+        )
 
     def ancestors_path(self) -> Tuple[List['UnwindingVertex'], List[Command]]:
         if self.parent is None:
             return [self], []
+
         assert self.transition is not None
         v_pi, u_pi = self.parent.ancestors_path()
         v_pi.append(self)
@@ -159,12 +173,16 @@ class Unwinding:
         )
 
         # If error path is not None, unwinding is unsafe
-        self._error_path: Optional[Tuple[List[UnwindingVertex], z3.ModelRef]] = None
+        self._error_path: Optional[
+            Tuple[List[UnwindingVertex], z3.ModelRef]
+        ] = None
 
-        self.verts: Set[UnwindingVertex] = {eps}  # \( V \leftarrow \{ \epsilon \} \)
+        # \( V \leftarrow \{ \epsilon \} \)
+        self.verts: Set[UnwindingVertex] = {eps}
         # \( E \) is stored as successor lists on vertices
         # \( \psi \) is stored as labels on vertices
-        self.covering: Set[Tuple[UnwindingVertex, UnwindingVertex]] = set()  # \( \triangleright \)
+        # \( \triangleright \)
+        self.covering: Set[Tuple[UnwindingVertex, UnwindingVertex]] = set()
         # self.uncovered_verts caches uncovered vertices
         # \( \epsilon \) is initially uncovered
         self.uncovered_leaves: Set[UnwindingVertex] = {eps}
@@ -176,12 +194,16 @@ class Unwinding:
             while w is not None:
                 self.close(w)
                 w = w.parent
+
             self.dfs(v)
 
     def __str__(self) -> str:
         if self.is_unsafe:
             error_path, error_assign = self.error_path
-            return "Unsafe: {}{}".format(repr(error_assign), "".join(map("\n\t{}".format, error_path)))
+            return "Unsafe: {}{}".format(
+                repr(error_assign),
+                "".join(map("\n\t{}".format, error_path))
+            )
 
         return "\n".join(map(str, self.verts))
 
@@ -222,7 +244,6 @@ class Unwinding:
         for (x, y) in self.covering.copy():
             if y.has_weak_ancestor(v):
                 self.covering.remove((x, y))
-
                 if y.is_leaf:
                     self.uncovered_leaves.add(y)
 
@@ -237,6 +258,7 @@ class Unwinding:
             return
         if models(v.label, BoolVal(False)):
             return
+
         v_pi, u_pi = v.ancestors_path()
         assert(len(v_pi) == len(u_pi) + 1)
         u_pi_, times = timeshift(u_pi)
@@ -246,6 +268,7 @@ class Unwinding:
         except z3.ModelRef as model:
             self.mark_unsafe(v, model)
             return
+
         assert(len(v_pi) == len(a_hat) + 2)
         for i in range(len(a_hat)):
             phi = untimeshift(a_hat[i], times)
@@ -256,12 +279,13 @@ class Unwinding:
                         if y.is_leaf:
                             self.uncovered_leaves.add(y)
 
-                v_pi[i].label = And(v_pi[i].label, phi)
+                v_pi[i].label = z3.simplify(And(v_pi[i].label, phi))
 
     def expand(self, v: UnwindingVertex) -> None:
         print("Expanding: " + str(v))
         if v.covered or v.children:
             return
+
         print(v.location)
         print(self.cfa.successors(v.location))
         for m in self.cfa.successors(v.location):
@@ -273,7 +297,11 @@ class Unwinding:
             self.verts.add(w)
             self.uncovered_leaves.add(w)
 
-    def mark_unsafe(self, unsafe_vert: UnwindingVertex, sat_assign: z3.ModelRef) -> None:
+    def mark_unsafe(
+            self,
+            unsafe_vert: UnwindingVertex,
+            sat_assign: z3.ModelRef
+    ) -> None:
         error_path, _ = unsafe_vert.ancestors_path()
         self._error_path = (error_path, sat_assign)
 
