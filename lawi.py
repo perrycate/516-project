@@ -110,15 +110,22 @@ class UnwindingVertex(Annotation):
             self.parent is not None and self.parent.has_weak_ancestor(other)
         )
 
-    def ancestors_path(self) -> Tuple[List['UnwindingVertex'], List[Command]]:
+    def ancestors_path(self) -> List['UnwindingVertex']:
         if self.parent is None:
-            return [self], []
+            return [self]
+
+        v_pi = self.parent.ancestors_path()
+        v_pi.append(self)
+        return v_pi
+
+    def transition_path(self) -> List[Command]:
+        if self.parent is None:
+            return []
 
         assert self.transition is not None
-        v_pi, u_pi = self.parent.ancestors_path()
-        v_pi.append(self)
+        u_pi = self.parent.transition_path()
         u_pi.append(self.transition)
-        return v_pi, u_pi
+        return u_pi
 
     @property
     def is_leaf(self) -> bool:
@@ -157,24 +164,27 @@ class Unwinding(Annotation):
         self.cfa: ControlFlowAutomaton = cfa  # cfa.verts is \( \Lambda \)
         while self.uncovered_leaves:
             if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
-                if self.uncovered_leaves != set(
-                        v
-                        for v in self.verts
-                        if v.is_leaf and 0 == sum(
-                            (w, v) in self.covering
-                            for w in v.ancestors_path()[0]
-                        )
-                ):
-                    logging.debug("\n\t".join(str(v) for v in self.uncovered_leaves))
-                    logging.debug("\n\t".join(
-                        str(v)
-                        for v in self.verts
-                        if v.is_leaf and 0 == sum(
-                            (w, v) in self.covering
-                            for w in v.ancestors_path()[0]
-                        )
-                    ))
-                    assert False
+                uncovered_leaves = set(
+                    v
+                    for v in self.verts
+                    if v.is_leaf and not v.covered
+                )
+                leaves_not_in_covering = set(
+                    v
+                    for v in self.verts
+                    if v.is_leaf and 0 == sum(
+                        (w, v) in self.covering
+                        for w in v.ancestors_path()
+                    )
+                )
+                assert self.uncovered_leaves == uncovered_leaves, "Uncovered leaves not match\n{}\n{}".format(
+                    "\n\t".join(str(v) for v in self.uncovered_leaves),
+                    "\n\t".join(str(v) for v in uncovered_leaves),
+                )
+                assert self.uncovered_leaves == leaves_not_in_covering, "Leaves not in covering not match\n{}\n{}".format(
+                    "\n\t".join(str(v) for v in self.uncovered_leaves),
+                    "\n\t".join(str(v) for v in leaves_not_in_covering),
+                )
 
             v = self.uncovered_leaves.pop()
             logging.debug("Unwinding: " + str(v))
@@ -224,29 +234,13 @@ class Unwinding(Annotation):
         for w in v.children:
             self.dfs(w)
 
-    def cover(self, v: UnwindingVertex, w: UnwindingVertex) -> None:
-        logging.debug("Covering: " + str(v))
-        if v.covered or v.location != w.location or w.has_weak_ancestor(v):
-            return
-        if not models(v.label, w.label):
-            return
-
-        # Uncover ancestors of v
-        for (x, y) in self.covering.copy():
-            if y.has_weak_ancestor(v):
-                self.uncover(y)
-
-        # Cover v
-        v.covered = True
-        self.covering.add((v, w))
-        self.uncovered_leaves.discard(v)
-
     def uncover(self, y: UnwindingVertex) -> None:
         discarded = 0
 
         # Discard whatever covers this vertex
         for x in self.verts:
-            if (x, y) in self.covering:
+            if (x, y) in self.covering.copy():
+                assert y.has_weak_ancestor(x)
                 self.covering.remove((x, y))
                 discarded += 1
 
@@ -261,6 +255,22 @@ class Unwinding(Annotation):
 
         y.covered = False
 
+    def cover(self, v: UnwindingVertex, w: UnwindingVertex) -> None:
+        logging.debug("Covering: " + str(v))
+        if v.covered or v.location != w.location or w.has_weak_ancestor(v):
+            return
+        if not models(v.label, w.label):
+            return
+
+        # Uncover ancestors of v
+        for (x, y) in self.covering.copy():
+            if v.has_weak_ancestor(y):
+                self.uncover(y)
+
+        # Cover v
+        v.covered = True
+        self.covering.add((w, v))
+        self.uncovered_leaves.discard(v)
 
     def refine(self, v: UnwindingVertex) -> None:
         logging.debug("Refining: " + str(v))
@@ -269,7 +279,7 @@ class Unwinding(Annotation):
         if models(v.label, BoolVal(False)):
             return
 
-        v_pi, u_pi = v.ancestors_path()
+        v_pi, u_pi = v.ancestors_path(), v.transition_path()
         assert(len(v_pi) == len(u_pi) + 1)
         u_pi_, times = timeshift(u_pi)
         assert(len(u_pi) == len(u_pi_))
@@ -282,12 +292,12 @@ class Unwinding(Annotation):
         assert(len(v_pi) == len(a_hat) + 2)
         for i in range(len(a_hat)):
             phi = untimeshift(a_hat[i], times)
-            if not models(v_pi[i+2].label, phi):
+            if not models(v_pi[i + 2].label, phi):
                 for (x, y) in self.covering.copy():
-                    if y == v_pi[i+2]:
+                    if y == v_pi[i + 2]:
                         self.uncover(y)
 
-                v_pi[i+2].label = z3.simplify(And(v_pi[i+2].label, phi))
+                v_pi[i + 2].label = z3.simplify(And(v_pi[i + 2].label, phi))
 
     def expand(self, v: UnwindingVertex) -> None:
         logging.debug("Expanding: " + str(v))
@@ -310,8 +320,7 @@ class Unwinding(Annotation):
             unsafe_vert: UnwindingVertex,
             sat_assign: z3.ModelRef
     ) -> None:
-        error_path, _ = unsafe_vert.ancestors_path()
-        self._error_path = (error_path, sat_assign)
+        self._error_path = (unsafe_vert.ancestors_path(), sat_assign)
 
     @property
     def is_unsafe(self) -> bool:
