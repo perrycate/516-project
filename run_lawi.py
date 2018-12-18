@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from lawi import ControlFlowAutomaton, analyze_and_print
+from lawi import ControlFlowAutomaton, analyze
 import logging
 import random
 from sil import program
@@ -9,7 +9,7 @@ from test_lawi import init_z3
 USAGE = "Usage: {} [lawi|constant] file".format(sys.argv[0])
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     init_z3()
 
     if len(sys.argv) != 3:
@@ -18,7 +18,12 @@ if __name__ == '__main__':
 
     pgm = program.parseFile(sys.argv[2], parseAll=True)[0]
     if (sys.argv[1] == "lawi"):
-        analyze_and_print(pgm)
+        unwinding = analyze(pgm)
+        print(unwinding)
+        print(pgm.annotation(unwinding))
+        print("{{{}\n}}".format(unwinding.get_entry(unwinding.loc_exit)))
+        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+            code.interact(local=locals())
     elif (sys.argv[1] == "exec"):
         cfa = ControlFlowAutomaton()
         loc_entry = cfa.fresh_vertex()

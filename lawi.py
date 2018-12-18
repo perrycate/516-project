@@ -200,6 +200,7 @@ class Unwinding:
 
     def __str__(self) -> str:
         if self.is_unsafe:
+            assert self.error_path is not None
             error_path, error_assign = self.error_path
             return "Unsafe: {}{}".format(
                 repr(error_assign),
@@ -314,18 +315,17 @@ class Unwinding:
     def error_path(self) -> Optional[Tuple[List[UnwindingVertex], z3.ModelRef]]:
         return self._error_path
 
-    def __getitem__(self, loc: int) -> str:
-        return "; ".join(str(v) for v in self.verts if v.location == loc)
+    def get_entry(self, loc: int, indent: int = 0) -> str:
+        formatStr = "\n" + (indent + 1) * "    " + "{}"
+        return "Location {}:{}".format(
+            loc,
+            "".join(formatStr.format(v) for v in self.verts if v.location == loc),
+        )
 
 
-def analyze_and_print(stmt):
+def analyze(stmt):
     cfa = ControlFlowAutomaton()
     loc_entry = cfa.fresh_vertex()
     loc_exit = cfa.fresh_vertex()
     stmt.to_cfa(cfa, loc_entry, loc_exit)
-    annotation = Unwinding(cfa, loc_entry, loc_exit)
-    print(annotation)
-    stmt.print_annotation(annotation, 0)
-    print("{" + str(annotation[loc_exit]) + "}")
-    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
-        code.interact(local=locals())
+    return Unwinding(cfa, loc_entry, loc_exit)

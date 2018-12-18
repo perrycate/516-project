@@ -11,6 +11,7 @@ from pyparsing import (
 from functools import reduce
 from typing import (
     Dict,
+    List,
     Optional,
     Set,
     Type,
@@ -371,10 +372,10 @@ class Stmt:
     def __init__(self) -> None:
         self.entry = None
 
-    def pp(self, indent: int) -> str:
+    def __str__(self, indent: int = 0) -> str:
         raise NotImplementedError()
 
-    def print_annotation(self, annotation, indent):
+    def annotation(self, annotation, indent: int = 0) -> str:
         raise NotImplementedError()
 
     def to_cfa(self, cfa, u, v):
@@ -386,19 +387,22 @@ class Stmt:
 
 class StmtAssign(Stmt):
     """Variable assignment"""
-    def __init__(self, lhs, rhs):
+    def __init__(self, lhs: str, rhs: Term) -> None:
         self.lhs = lhs
         self.rhs = rhs
 
     def execute(self, state):
         state[self.lhs] = self.rhs.eval(StdInt, state)
 
-    def pp(self, indent: int) -> str:
-        return ("    " * indent) + self.lhs + " = " + str(self.rhs) + "\n"
+    def __str__(self, indent: int = 0) -> str:
+        return ("    " * indent) + self.lhs + " = " + str(self.rhs)
 
-    def print_annotation(self, annotation, indent):
-        print(("    " * indent) + "{" + str(annotation[self.entry]) + "}")
-        print(("    " * indent) + self.lhs + " = " + str(self.rhs))
+    def annotation(self, annotation, indent: int = 0) -> str:
+        return "{0}{{{1}\n{0}}}\n{2}".format(
+            "    " * indent,
+            annotation.get_entry(self.entry, indent),
+            self.__str__(indent),
+        )
 
     def to_cfa(self, cfa, u, v):
         self.entry = u
@@ -407,7 +411,7 @@ class StmtAssign(Stmt):
 
 class StmtIf(Stmt):
     """Conditional statement"""
-    def __init__(self, cond, bthen, belse):
+    def __init__(self, cond: Form, bthen: Stmt, belse: Stmt) -> None:
         self.cond = cond
         self.bthen = bthen
         self.belse = belse
@@ -418,19 +422,21 @@ class StmtIf(Stmt):
         else:
             self.belse.execute(state)
 
-    def pp(self, indent: int) -> str:
+    def __str__(self, indent: int = 0) -> str:
         program = ("    " * indent) + "if " + str(self.cond) + ":\n"
-        program += self.bthen.pp(indent + 1)
+        program += self.bthen.__str__(indent + 1) + "\n"
         program += ("    " * indent) + "else:\n"
-        program += self.belse.pp(indent + 1)
+        program += self.belse.__str__(indent + 1)
         return program
 
-    def print_annotation(self, annotation, indent):
-        print(("    " * indent) + "{" + str(annotation[self.entry]) + "}")
-        print(("    " * indent) + "if " + str(self.cond) + ":")
-        self.bthen.print_annotation(annotation, indent + 1)
-        print(("    " * indent) + "else:")
-        self.belse.print_annotation(annotation, indent + 1)
+    def annotation(self, annotation, indent: int = 0) -> str:
+        return "{0}{{{1}\n{0}}}\n{0}if {2}:\n{3}\n{0}else:\n{4}".format(
+            "    " * indent,
+            annotation.get_entry(self.entry, indent),
+            str(self.cond),
+            self.bthen.annotation(annotation, indent + 1),
+            self.belse.annotation(annotation, indent + 1),
+        )
 
     def to_cfa(self, cfa, u, v):
         self.entry = u
@@ -444,19 +450,18 @@ class StmtIf(Stmt):
 
 class StmtBlock(Stmt):
     """Sequence of statements"""
-    def __init__(self, block):
+    def __init__(self, block: List[Stmt]) -> None:
         self.block = block
 
     def execute(self, state):
         for stmt in self.block:
             stmt.execute(state)
 
-    def pp(self, indent: int) -> str:
-        return "".join(map(lambda x: x.pp(indent), self.block))
+    def __str__(self, indent: int = 0) -> str:
+        return "\n".join(map(lambda x: x.__str__(indent), self.block))
 
-    def print_annotation(self, annotation, indent):
-        for stmt in self.block:
-            stmt.print_annotation(annotation, indent)
+    def annotation(self, annotation, indent: int = 0) -> str:
+        return "\n".join(stmt.annotation(annotation, indent) for stmt in self.block)
 
     def to_cfa(self, cfa, u, v):
         self.entry = u
@@ -471,7 +476,7 @@ class StmtBlock(Stmt):
 
 class StmtWhile(Stmt):
     """While loop"""
-    def __init__(self, cond, body):
+    def __init__(self, cond: Form, body: Stmt) -> None:
         self.cond = cond
         self.body = body
 
@@ -479,15 +484,18 @@ class StmtWhile(Stmt):
         while self.cond.eval(state):
             self.body.execute(state)
 
-    def pp(self, indent: int) -> str:
+    def __str__(self, indent: int = 0) -> str:
         program = ("    " * indent) + "while " + str(self.cond) + ":\n"
-        program += self.body.pp(indent + 1)
+        program += self.body.__str__(indent + 1)
         return program
 
-    def print_annotation(self, annotation, indent):
-        print(("    " * indent) + "{" + str(annotation[self.entry]) + "}")
-        print(("    " * indent) + "while " + str(self.cond) + ":")
-        self.body.print_annotation(annotation, indent + 1)
+    def annotation(self, annotation, indent: int = 0) -> str:
+        return "{0}{{{1}\n{0}}}\n{0}while {2}:\n{3}".format(
+            "    " * indent,
+            str(annotation.get_entry(self.entry, indent)),
+            str(self.cond),
+            self.body.annotation(annotation, indent + 1),
+        )
 
     def to_cfa(self, cfa, u, v):
         self.entry = u
@@ -499,22 +507,25 @@ class StmtWhile(Stmt):
 
 class StmtPrint(Stmt):
     """Print to stdout"""
-    def __init__(self, expr):
+    def __init__(self, expr: Expr) -> None:
         self.expr = expr
 
     def execute(self, state):
         print(self.expr.eval(StdInt, state))
 
-    def pp(self, indent: int) -> str:
-        return ("    " * indent) + "print(" + str(self.expr) + ")\n"
+    def __str__(self, indent: int = 0) -> str:
+        return ("    " * indent) + "print(" + str(self.expr) + ")"
+
+    def annotation(self, annotation, indent: int = 0) -> str:
+        return "{0}{{{1}\n{0}}}\n{0}print({2})".format(
+            "    " * indent,
+            str(annotation.get_entry(self.entry, indent)),
+            str(self.expr),
+        )
 
     def to_cfa(self, cfa, u, v):
         self.entry = u
         cfa.add_edge(u, CmdPrint(self.expr), v)
-
-    def print_annotation(self, annotation, indent):
-        print(("    " * indent) + "{" + str(annotation[self.entry]) + "}")
-        print(("    " * indent) + "print(" + str(self.expr) + ")")
 ############################################################################
 
 
