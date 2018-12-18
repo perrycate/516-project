@@ -9,7 +9,7 @@ from test_lawi import init_z3
 USAGE = "Usage: {} [lawi|constant] file".format(sys.argv[0])
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     init_z3()
 
     if len(sys.argv) != 3:

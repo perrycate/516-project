@@ -64,7 +64,7 @@ class UnwindingVertex(Annotation):
         # \( M_e(self.parent, self) \)
         self.children: Set['UnwindingVertex'] = set()
         self.label: z3.BoolRef = BoolVal(True)  # \( \psi(self) \)
-        self.covered: bool = False
+        self._covered: bool = False
 
     def __lt__(self, other: Any) -> bool:  # \( \prec \)
         return isinstance(other, UnwindingVertex) and self.num < other.num
@@ -124,6 +124,10 @@ class UnwindingVertex(Annotation):
     def is_leaf(self) -> bool:
         return len(self.children) == 0
 
+    @property
+    def covered(self) -> bool:
+        return self._covered
+
 
 class Unwinding(Annotation):
     def __init__(
@@ -156,6 +160,26 @@ class Unwinding(Annotation):
         self.uncovered_leaves: Set[UnwindingVertex] = {eps}
         self.cfa: ControlFlowAutomaton = cfa  # cfa.verts is \( \Lambda \)
         while self.uncovered_leaves:
+            if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+                if self.uncovered_leaves != set(
+                        v
+                        for v in self.verts
+                        if v.is_leaf and 0 == sum(
+                            (w, v) in self.covering
+                            for w in v.ancestors_path()[0]
+                        )
+                ):
+                    logging.debug("\n\t".join(str(v) for v in self.uncovered_leaves))
+                    logging.debug("\n\t".join(
+                        str(v)
+                        for v in self.verts
+                        if v.is_leaf and 0 == sum(
+                            (w, v) in self.covering
+                            for w in v.ancestors_path()[0]
+                        )
+                    ))
+                    assert False
+
             v = self.uncovered_leaves.pop()
             logging.debug("Unwinding: " + str(v))
             w = v.parent
@@ -221,7 +245,7 @@ class Unwinding(Annotation):
         # Cover v
         v.covered = True
         self.covering.add((v, w))
-        self.uncovered_leaves.remove(v)
+        self.uncovered_leaves.discard(v)
 
     def refine(self, v: UnwindingVertex) -> None:
         logging.debug("Refining: " + str(v))
@@ -243,14 +267,14 @@ class Unwinding(Annotation):
         assert(len(v_pi) == len(a_hat) + 2)
         for i in range(len(a_hat)):
             phi = untimeshift(a_hat[i], times)
-            if not models(v_pi[i].label, phi):
+            if not models(v_pi[i+2].label, phi):
                 for (x, y) in self.covering.copy():
-                    if y == v_pi[i]:
+                    if y == v_pi[i+2]:
                         self.covering.remove((x, y))
                         if y.is_leaf:
                             self.uncovered_leaves.add(y)
 
-                v_pi[i].label = z3.simplify(And(v_pi[i].label, phi))
+                v_pi[i+2].label = z3.simplify(And(v_pi[i+2].label, phi))
 
     def expand(self, v: UnwindingVertex) -> None:
         logging.debug("Expanding: " + str(v))
@@ -265,6 +289,7 @@ class Unwinding(Annotation):
             )
             self.verts.add(w)
             self.uncovered_leaves.add(w)
+            self.uncovered_leaves.discard(v)
 
     def mark_unsafe(
             self,
