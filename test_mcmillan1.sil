@@ -1,0 +1,19 @@
+l := 0;
+l := 1;
+old := new;
+if (condition = 1) {
+  l := 0;
+  new := new + 1
+} else {
+  new := new
+};
+while (not(new = old)) {
+  l := 1;
+  old := new;
+  if (condition2 = 1) {
+    l := 0;
+    new := new + 1
+  } else {
+    new := new
+  }
+}
