@@ -96,6 +96,7 @@ class UnwindingVertex(Annotation):
             " location {},"
             " label {},"
             " covered {}"
+            "{}"
         ).format(
             self.num,
             self.parent.num if self.parent is not None else None,
@@ -103,6 +104,7 @@ class UnwindingVertex(Annotation):
             self.location,
             self.label,
             self.covered,
+            ", leaf" if self.is_leaf else "",
         )
 
     # \( other \sqsubseteq self \)
@@ -179,6 +181,8 @@ class Unwinding(Annotation):
                 w = w.parent
 
             self.dfs(v)
+        #if not self.is_unsafe:
+            #self.check_cover_cache()
 
     def __str__(self) -> str:
         if self.is_unsafe:
@@ -260,6 +264,26 @@ class Unwinding(Annotation):
 
         self.check_cover_cache()
 
+    def uncover(self, y: UnwindingVertex) -> None:
+        discarded = 0
+
+        # Discard whatever covers this vertex
+        for x in self.verts:
+            if (y, x) in self.covering.copy():
+                self.covering.remove((y, x))
+                discarded += 1
+
+        # Sanity check
+        assert discarded == 1, "Vertex {} was covered {} times!".format(
+            y.num,
+            discarded,
+        )
+
+        for v in y.descendants:
+            v.covered = False
+            if v.is_leaf:
+                self.uncovered_leaves.add(v)
+
     def cover(self, v: UnwindingVertex, w: UnwindingVertex) -> None:
         logging.debug("Covering: " + str(v))
         if v.covered or v.location != w.location or w.has_weak_ancestor(v):
@@ -267,12 +291,16 @@ class Unwinding(Annotation):
         if not models(v.label, w.label):
             return
 
-        # Cover v
-        self.covering.add((v, w))
+        # Uncover descendants of v
         for (x, y) in self.covering.copy():
             if y.has_weak_ancestor(v):
-                self.covering.discard((x, y))
-        self.fix_cover_cache()
+                self.uncover(y)
+
+        # Cover v
+        for w in v.descendants:
+            w.covered = True
+            self.uncovered_leaves.discard(w)
+        self.covering.add((v, w))
 
     def refine(self, v: UnwindingVertex) -> None:
         logging.debug("Refining: " + str(v))
@@ -297,14 +325,13 @@ class Unwinding(Annotation):
             if not models(v_pi[i + 2].label, phi):
                 for (x, y) in self.covering.copy():
                     if y == v_pi[i + 2]:
-                        self.covering.discard((x, y))
+                        self.uncover(x)
 
                 v_pi[i + 2].label = z3.simplify(And(v_pi[i + 2].label, phi))
-        self.fix_cover_cache()
 
     def expand(self, v: UnwindingVertex) -> None:
         logging.debug("Expanding: " + str(v))
-        if v.covered or v.children:
+        if v.covered or not v.is_leaf:
             return
 
         for m in self.cfa.successors(v.location):
