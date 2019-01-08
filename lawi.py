@@ -1,4 +1,5 @@
-from collections import defaultdict
+from collections import defaultdict, deque
+from functools import reduce
 import logging
 from sil import Annotation, Command, ControlFlowAutomaton, Stmt
 from typing import (
@@ -130,6 +131,13 @@ class UnwindingVertex(Annotation):
         return u_pi
 
     @property
+    def descendants(self) -> Set['UnwindingVertex']:
+        descendants = {self}
+        for child in self.children:
+            descendants |= child.descendants
+        return descendants
+
+    @property
     def is_leaf(self) -> bool:
         return len(self.children) == 0
 
@@ -164,29 +172,8 @@ class Unwinding(Annotation):
         # \( \epsilon \) is initially uncovered
         self.uncovered_leaves: Set[UnwindingVertex] = {eps}
         self.cfa: ControlFlowAutomaton = cfa  # cfa.verts is \( \Lambda \)
-        while self.uncovered_leaves:
-            if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
-                uncovered_leaves = set(
-                    v
-                    for v in self.verts
-                    if v.is_leaf and not v.covered
-                )
-                leaves_not_in_covering = set(
-                    v
-                    for v in self.verts
-                    if v.is_leaf and 0 == sum(
-                        (w, v) in self.covering
-                        for w in v.ancestors_path
-                    )
-                )
-                assert self.uncovered_leaves == uncovered_leaves, "Uncovered leaves not match\n{}\n{}".format(
-                    "\n\t".join(str(v) for v in self.uncovered_leaves),
-                    "\n\t".join(str(v) for v in uncovered_leaves),
-                )
-                assert self.uncovered_leaves == leaves_not_in_covering, "Leaves not in covering not match\n{}\n{}".format(
-                    "\n\t".join(str(v) for v in self.uncovered_leaves),
-                    "\n\t".join(str(v) for v in leaves_not_in_covering),
-                )
+        while self.uncovered_leaves and not self.is_unsafe:
+            self.check_cover_cache()
 
             v = self.uncovered_leaves.pop()
             logging.debug("Unwinding: " + str(v))
@@ -236,26 +223,42 @@ class Unwinding(Annotation):
         for w in v.children:
             self.dfs(w)
 
-    def uncover(self, y: UnwindingVertex) -> None:
-        discarded = 0
+    def check_cover_cache(self) -> None:
+        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
+            uncovered_leaves = set(
+                v
+                for v in self.verts
+                if v.is_leaf and not v.covered
+            )
+            leaves_not_in_covering = set(
+                v
+                for v in self.verts
+                if v.is_leaf and 0 == sum(
+                    v.has_weak_ancestor(w)
+                    for (w, x) in self.covering
+                )
+            )
+            assert self.uncovered_leaves == uncovered_leaves, "Uncovered leaves not match\n{}\n{}".format(
+                "\n\t".join(str(v) for v in self.uncovered_leaves),
+                "\n\t".join(str(v) for v in uncovered_leaves),
+            )
+            assert self.uncovered_leaves == leaves_not_in_covering, "Leaves not in covering not match\n{}\n{}".format(
+                "\n\t".join(str(v) for v in self.uncovered_leaves),
+                "\n\t".join(str(v) for v in leaves_not_in_covering),
+            )
 
-        # Discard whatever covers this vertex
-        for x in self.verts:
-            if (y, x) in self.covering.copy():
-                assert y.has_weak_ancestor(x)
-                self.covering.remove((y, x))
-                discarded += 1
+    def fix_cover_cache(self) -> None:
+        self.uncovered_leaves = set()
+        self.covered_verts = reduce(set.union, [v.descendants for (v, _) in self.covering], set())
 
-        # Sanity check
-        assert discarded == 1, "Vertex {} was covered {} times!".format(
-            y.num,
-            discarded,
-        )
+        for v in self.covered_verts:
+            v.covered = True
+        for v in self.verts - self.covered_verts:
+            v.covered = False
+            if v.is_leaf:
+                self.uncovered_leaves.add(v)
 
-        if y.is_leaf:
-            self.uncovered_leaves.add(y)
-
-        y.covered = False
+        self.check_cover_cache()
 
     def cover(self, v: UnwindingVertex, w: UnwindingVertex) -> None:
         logging.debug("Covering: " + str(v))
@@ -264,15 +267,12 @@ class Unwinding(Annotation):
         if not models(v.label, w.label):
             return
 
-        # Uncover descendants of v
+        # Cover v
+        self.covering.add((v, w))
         for (x, y) in self.covering.copy():
             if y.has_weak_ancestor(v):
-                self.uncover(y)
-
-        # Cover v
-        v.covered = True
-        self.covering.add((v, w))
-        self.uncovered_leaves.discard(v)
+                self.covering.discard((x, y))
+        self.fix_cover_cache()
 
     def refine(self, v: UnwindingVertex) -> None:
         logging.debug("Refining: " + str(v))
@@ -297,9 +297,10 @@ class Unwinding(Annotation):
             if not models(v_pi[i + 2].label, phi):
                 for (x, y) in self.covering.copy():
                     if y == v_pi[i + 2]:
-                        self.uncover(y)
+                        self.covering.discard((x, y))
 
                 v_pi[i + 2].label = z3.simplify(And(v_pi[i + 2].label, phi))
+        self.fix_cover_cache()
 
     def expand(self, v: UnwindingVertex) -> None:
         logging.debug("Expanding: " + str(v))
