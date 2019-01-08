@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import code
 from lawi import Unwinding
 import logging
 import random

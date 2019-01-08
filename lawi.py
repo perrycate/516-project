@@ -104,26 +104,28 @@ class UnwindingVertex(Annotation):
             self.covered,
         )
 
-    # \( self \sqsubseteq other \)
+    # \( other \sqsubseteq self \)
     def has_weak_ancestor(self, other: 'UnwindingVertex') -> bool:
         return self == other or (
             self.parent is not None and self.parent.has_weak_ancestor(other)
         )
 
+    @property
     def ancestors_path(self) -> List['UnwindingVertex']:
         if self.parent is None:
             return [self]
 
-        v_pi = self.parent.ancestors_path()
+        v_pi = self.parent.ancestors_path
         v_pi.append(self)
         return v_pi
 
+    @property
     def transition_path(self) -> List[Command]:
         if self.parent is None:
             return []
 
         assert self.transition is not None
-        u_pi = self.parent.transition_path()
+        u_pi = self.parent.transition_path
         u_pi.append(self.transition)
         return u_pi
 
@@ -174,7 +176,7 @@ class Unwinding(Annotation):
                     for v in self.verts
                     if v.is_leaf and 0 == sum(
                         (w, v) in self.covering
-                        for w in v.ancestors_path()
+                        for w in v.ancestors_path
                     )
                 )
                 assert self.uncovered_leaves == uncovered_leaves, "Uncovered leaves not match\n{}\n{}".format(
@@ -239,9 +241,9 @@ class Unwinding(Annotation):
 
         # Discard whatever covers this vertex
         for x in self.verts:
-            if (x, y) in self.covering.copy():
+            if (y, x) in self.covering.copy():
                 assert y.has_weak_ancestor(x)
-                self.covering.remove((x, y))
+                self.covering.remove((y, x))
                 discarded += 1
 
         # Sanity check
@@ -262,14 +264,14 @@ class Unwinding(Annotation):
         if not models(v.label, w.label):
             return
 
-        # Uncover ancestors of v
+        # Uncover descendants of v
         for (x, y) in self.covering.copy():
-            if v.has_weak_ancestor(y):
+            if y.has_weak_ancestor(v):
                 self.uncover(y)
 
         # Cover v
         v.covered = True
-        self.covering.add((w, v))
+        self.covering.add((v, w))
         self.uncovered_leaves.discard(v)
 
     def refine(self, v: UnwindingVertex) -> None:
@@ -279,7 +281,7 @@ class Unwinding(Annotation):
         if models(v.label, BoolVal(False)):
             return
 
-        v_pi, u_pi = v.ancestors_path(), v.transition_path()
+        v_pi, u_pi = v.ancestors_path, v.transition_path
         assert(len(v_pi) == len(u_pi) + 1)
         u_pi_, times = timeshift(u_pi)
         assert(len(u_pi) == len(u_pi_))
@@ -320,7 +322,7 @@ class Unwinding(Annotation):
             unsafe_vert: UnwindingVertex,
             sat_assign: z3.ModelRef
     ) -> None:
-        self._error_path = (unsafe_vert.ancestors_path(), sat_assign)
+        self._error_path = (unsafe_vert.ancestors_path, sat_assign)
 
     @property
     def is_unsafe(self) -> bool:
