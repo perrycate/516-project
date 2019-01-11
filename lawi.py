@@ -1,4 +1,4 @@
-from collections import defaultdict, deque
+from collections import defaultdict
 from functools import reduce
 import logging
 from sil import Annotation, Command, ControlFlowAutomaton, Stmt
@@ -233,7 +233,7 @@ class Unwinding(Annotation):
             leaves_not_in_covering = set(
                 v
                 for v in self.verts
-                if v.is_leaf and 0 == sum(
+                if v.is_leaf and not any(
                     v.has_weak_ancestor(w)
                     for (w, x) in self.covering
                 )
@@ -249,11 +249,15 @@ class Unwinding(Annotation):
 
     def fix_cover_cache(self) -> None:
         self.uncovered_leaves = set()
-        self.covered_verts = reduce(set.union, [v.descendants for (v, _) in self.covering], set())
+        covered_verts: Set[UnwindingVertex] = reduce(
+            set.union,
+            [v.descendants for (v, _) in self.covering],
+            set(),
+        )
 
-        for v in self.covered_verts:
+        for v in covered_verts:
             v.covered = True
-        for v in self.verts - self.covered_verts:
+        for v in self.verts - covered_verts:
             v.covered = False
             if v.is_leaf:
                 self.uncovered_leaves.add(v)

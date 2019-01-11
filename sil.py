@@ -355,7 +355,7 @@ class CmdPrint(Command):
     def __str__(self) -> str:
         return "print({})".format(self.expr)
 
-    def to_time_form(self, times: Dict[str, int]) -> z3.BoolRef:
+    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
         return BoolVal(False)
 
 
