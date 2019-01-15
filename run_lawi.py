@@ -5,13 +5,11 @@ import logging
 import random
 from sil import ControlFlowAutomaton, program
 import sys
-from test_lawi import init_z3
 
 USAGE = "Usage: {} [lawi|constant] file".format(sys.argv[0])
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
-    init_z3()
 
     if len(sys.argv) != 3:
         logging.critical(USAGE)
@@ -23,7 +21,6 @@ if __name__ == '__main__':
         print(unwinding)
         print(pgm.annotation(unwinding))
         print("{{{}\n}}".format(unwinding.get_entry(unwinding.cfa.loc_exit)))
-        print("\nPanic:\n{{{}\n}}".format(unwinding.get_entry(unwinding.cfa.loc_panic)))
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
             code.interact(local=locals())
     elif (sys.argv[1] == "exec"):

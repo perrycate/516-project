@@ -9,15 +9,6 @@ from pyparsing import (
     pyparsing_common,
 )
 from functools import reduce
-from typing import (
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-)
-import z3
 from z3 import (
     And,
     BoolVal,
@@ -32,38 +23,38 @@ from z3 import (
 # and multiplcation.
 class ArithStruct:
     @staticmethod
-    def of_numeral(num: int) -> int:
+    def of_numeral(num):
         raise NotImplementedError()
 
     @staticmethod
-    def add(left: int, right: int) -> int:
+    def add(left, right):
         raise NotImplementedError()
 
     @staticmethod
-    def negate(expr: int) -> int:
+    def negate(expr):
         raise NotImplementedError()
 
     @staticmethod
-    def mul(left: int, right: int) -> int:
+    def mul(left, right):
         raise NotImplementedError()
 
 
 class StdInt(ArithStruct):
     """The standard structure over the integers"""
     @staticmethod
-    def of_numeral(num: int) -> int:
+    def of_numeral(num):
         return num
 
     @staticmethod
-    def add(left: int, right: int) -> int:
+    def add(left, right):
         return left + right
 
     @staticmethod
-    def negate(expr: int) -> int:
+    def negate(expr):
         return -expr
 
     @staticmethod
-    def mul(left: int, right: int) -> int:
+    def mul(left, right):
         return left * right
 
 
@@ -83,242 +74,242 @@ class StdInt(ArithStruct):
 # to_term: encode the expression as a Z3 term
 # Formulas are similar.
 class Expr:
-    def __str__(self) -> str:
+    def __str__(self):
         raise NotImplementedError()
 
-    def vars(self) -> Set[str]:
+    def vars(self):
         raise NotImplementedError()
 
 
 class Term(Expr):
-    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
+    def eval(self, struct, state):
         raise NotImplementedError()
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(self.to_term())
 
-    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
+    def to_term(self, times=None):
         raise NotImplementedError()
 
 
 class Form(Expr):
-    def eval(self, state: Dict[str, int]) -> bool:
+    def eval(self, state):
         raise NotImplementedError()
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(self.to_formula())
 
-    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+    def to_formula(self, times=None):
         raise NotImplementedError()
 
 
 class ExprVar(Term):
     """Variables"""
-    def __init__(self, name: str) -> None:
+    def __init__(self, name):
         self.name = name
 
-    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
+    def eval(self, struct, state):
         return state[self.name]
 
-    def __str__(self) -> str:
+    def __str__(self):
         return self.name
 
-    def vars(self) -> Set[str]:
+    def vars(self):
         return set([str(self)])
 
-    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
+    def to_term(self, times=None):
         return Int(str(self) + "'" * (0 if times is None else times[str(self)]))
 
 
 class ExprNumeral(Term):
     """Numerals"""
-    def __init__(self, value: int) -> None:
+    def __init__(self, value):
         self.value = value
 
-    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
+    def eval(self, struct, state):
         return struct.of_numeral(self.value)
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(self.value)
 
-    def vars(self) -> Set[str]:
+    def vars(self):
         return set()
 
-    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
+    def to_term(self, times=None):
         return IntVal(self.value)
 
 
 class BinaryExpr(Expr):
     """Abstract class representing binary expressions"""
-    def __init__(self, left: Expr, right: Expr) -> None:
+    def __init__(self, left, right):
         self.left = left
         self.right = right
 
-    def vars(self) -> Set[str]:
+    def vars(self):
         return self.left.vars() | self.right.vars()
 
 
 class BinaryTermTerm(BinaryExpr, Term):
-    def __init__(self, left: Term, right: Term) -> None:
-        self.left: Term = left
-        self.right: Term = right
+    def __init__(self, left, right):
+        self.left = left
+        self.right = right
 
 
 class BinaryTermForm(BinaryExpr, Form):
-    def __init__(self, left: Term, right: Term) -> None:
-        self.left: Term = left
-        self.right: Term = right
+    def __init__(self, left, right):
+        self.left = left
+        self.right = right
 
 
 class BinaryFormForm(BinaryExpr, Form):
-    def __init__(self, left: Form, right: Form) -> None:
-        self.left: Form = left
-        self.right: Form = right
+    def __init__(self, left, right):
+        self.left = left
+        self.right = right
 
 
 class ExprPlus(BinaryTermTerm):
     """Addition"""
-    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
+    def eval(self, struct, state):
         return struct.add(
             self.left.eval(struct, state),
             self.right.eval(struct, state),
         )
 
-    def __str__(self) -> str:
+    def __str__(self):
         return "(" + str(self.left) + " + " + str(self.right) + ")"
 
-    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
+    def to_term(self, times=None):
         return self.left.to_term(times) + self.right.to_term(times)
 
 
 class ExprNeg(Term):
     """Negation"""
-    def __init__(self, expr: Term) -> None:
+    def __init__(self, expr):
         self.expr = expr
 
-    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
+    def eval(self, struct, state):
         return struct.negate(self.expr.eval(struct, state))
 
-    def __str__(self) -> str:
+    def __str__(self):
         return "-(" + str(self.expr) + ")"
 
-    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
+    def to_term(self, times=None):
         return -self.expr.to_term(times)
 
-    def vars(self) -> Set[str]:
+    def vars(self):
         return self.expr.vars()
 
 
 class ExprMul(BinaryTermTerm):
     """Multiplication"""
-    def eval(self, struct: Type[ArithStruct], state: Dict[str, int]) -> int:
+    def eval(self, struct, state):
         return struct.mul(
             self.left.eval(struct, state),
             self.right.eval(struct, state),
         )
 
-    def __str__(self) -> str:
+    def __str__(self):
         return "(" + str(self.left) + " * " + str(self.right) + ")"
 
-    def to_term(self, times: Optional[Dict[str, int]] = None) -> z3.ArithRef:
+    def to_term(self, times=None):
         return self.left.to_term(times) * self.right.to_term(times)
 
 
 class FormLt(BinaryTermForm):
     """Strictly less-than"""
-    def eval(self, state: Dict[str, int]) -> bool:
+    def eval(self, state):
         return self.left.eval(StdInt, state) < self.right.eval(StdInt, state)
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(self.left) + " < " + str(self.right)
 
-    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+    def to_formula(self, times=None):
         return self.left.to_term(times) < self.right.to_term(times)
 
 
 class FormEq(BinaryTermForm):
     """Equal to"""
-    def eval(self, state: Dict[str, int]) -> bool:
+    def eval(self, state):
         return self.left.eval(StdInt, state) == self.right.eval(StdInt, state)
 
-    def __str__(self) -> str:
+    def __str__(self):
         return str(self.left) + " == " + str(self.right)
 
-    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+    def to_formula(self, times=None):
         return self.left.to_term(times) == self.right.to_term(times)
 
 
 class FormAnd(BinaryFormForm):
     """And"""
-    def eval(self, state: Dict[str, int]) -> bool:
+    def eval(self, state):
         return self.left.eval(state) and self.right.eval(state)
 
-    def __str__(self) -> str:
+    def __str__(self):
         return "(" + str(self.left) + " and " + str(self.right) + ")"
 
-    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+    def to_formula(self, times=None):
         return And(self.left.to_formula(times), self.right.to_formula(times))
 
 
 class FormOr(BinaryFormForm):
     """Or"""
-    def eval(self, state: Dict[str, int]) -> bool:
+    def eval(self, state):
         return self.left.eval(state) or self.right.eval(state)
 
-    def __str__(self) -> str:
+    def __str__(self):
         return "(" + str(self.left) + " or " + str(self.right) + ")"
 
-    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+    def to_formula(self, times=None):
         return Or(self.left.to_formula(times), self.right.to_formula(times))
 
 
 class FormNot(Form):
     """Not"""
-    def __init__(self, phi: Form) -> None:
+    def __init__(self, phi):
         self.phi = phi
 
-    def eval(self, state: Dict[str, int]) -> bool:
+    def eval(self, state):
         return not (self.phi.eval(state))
 
-    def __str__(self) -> str:
+    def __str__(self):
         return "not(" + str(self.phi) + ")"
 
-    def vars(self) -> Set[str]:
+    def vars(self):
         return self.phi.vars()
 
-    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+    def to_formula(self, times=None):
         return Not(self.phi.to_formula(times))
 
 
 ############################################################################
 # Control flow
 class Command:
-    def vars(self) -> Set[str]:
+    def vars(self):
         raise NotImplementedError()
 
-    def __str__(self) -> str:
+    def __str__(self):
         raise NotImplementedError()
 
-    def __repr__(self) -> str:
+    def __repr__(self):
         return "{}('{}')".format(self.__class__.__name__, str(self))
 
-    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+    def to_formula(self, times=None):
         raise NotImplementedError()
 
 
 class CmdAssign(Command):
     """Variable assignment"""
-    def __init__(self, lhs: ExprVar, rhs: Term) -> None:
+    def __init__(self, lhs, rhs):
         self.lhs = lhs
         self.rhs = rhs
 
-    def vars(self) -> Set[str]:
+    def vars(self):
         return set([str(self.lhs)]) | self.rhs.vars()
 
-    def __str__(self) -> str:
+    def __str__(self):
         return "{} := {}".format(self.lhs, self.rhs)
 
-    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+    def to_formula(self, times=None):
         rhs = self.rhs.to_term(times)
         if times is not None:
             times[str(self.lhs)] += 1
@@ -329,83 +320,71 @@ class CmdAssign(Command):
 
 class CmdAssume(Command):
     """Guard"""
-    def __init__(self, condition: Form) -> None:
+    def __init__(self, condition):
         self.condition = condition
 
-    def vars(self) -> Set[str]:
+    def vars(self):
         return self.condition.vars()
 
-    def __str__(self) -> str:
+    def __str__(self):
         return "[{}]".format(self.condition)
 
-    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+    def to_formula(self, times=None):
         return self.condition.to_formula(times)
-
-
-class CmdPanic(Command):
-    """Panic!"""
-    def vars(self) -> Set[str]:
-        return set()
-
-    def __str__(self) -> str:
-        return "panic()"
-
-    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
-        return BoolVal(True)
 
 
 class CmdPrint(Command):
     """Print to stdout"""
-    def __init__(self, expr: Expr) -> None:
+    def __init__(self, expr):
         self.expr = expr
 
-    def vars(self) -> Set[str]:
+    def vars(self):
         return self.expr.vars()
 
-    def __str__(self) -> str:
+    def __str__(self):
         return "print({})".format(self.expr)
 
-    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+    def to_formula(self, times=None):
         return BoolVal(False)
 
 
 # Control flow automaton: directed graph with a command labelling each edge
 class ControlFlowAutomaton:
-    def __init__(self) -> None:
-        self.max_loc: int = 0
-        self.succs: Dict[int, Set[int]] = {}
-        self.labels: Dict[Tuple[int, int], Command] = {}
-        self.entry: int = 0
-        self.loc_entry: int = self.fresh_vertex()
-        self.loc_exit: int = self.fresh_vertex()
-        self.loc_panic: int = self.fresh_vertex()
+    def __init__(self):
+        self.max_loc = 0
+        self.succs = {}
+        self.labels = {}
+        self.entry = 0
+        self.loc_entry = self.fresh_vertex()
+        self.loc_exit = self.fresh_vertex()
+        self.panic = set()
 
-    def fresh_vertex(self) -> int:
+    def fresh_vertex(self):
         v = self.max_loc
         self.max_loc = v + 1
         self.succs[v] = set()
         return v
 
-    def add_edge(self, u: int, cmd: Command, v: int) -> None:
+    def add_edge(self, u, cmd, v):
         self.succs[u].add(v)
         self.labels[(u, v)] = cmd
 
-    def successors(self, v: int) -> Set[int]:
+    def successors(self, v):
         """Set of all successors of a given vertex"""
         return self.succs[v]
 
-    def command(self, u: int, v: int) -> Command:
+    def command(self, u, v):
         """The command associated with a given edge"""
         return self.labels[(u, v)]
 
-    def vars(self) -> Set[str]:
+    def vars(self):
         """The set of variables that appear in the CFA"""
-        vars: Set[str] = set()
+        vars = set()
         for command in self.labels.values():
             vars = vars | command.vars()
         return vars
 
-    def locations(self) -> Set[int]:
+    def locations(self):
         """The set of locations (vertices) in the CFA"""
         return set(range(self.max_loc))
 
@@ -413,11 +392,11 @@ class ControlFlowAutomaton:
 
 
 class Annotation:
-    def get_entry(self, loc: int, indent: int = 0) -> str:
+    def get_entry(self, loc, indent=0):
         raise NotImplementedError()
 
     @staticmethod
-    def analyze(stmt: 'Stmt') -> 'Annotation':
+    def analyze(stmt):
         raise NotImplementedError()
 
 
@@ -434,35 +413,35 @@ class Annotation:
 # print_annotation: like pp, but additionally print an annotation
 class Stmt:
     """Statements"""
-    def __init__(self) -> None:
-        self.entry: Optional[int] = None
+    def __init__(self):
+        self.entry = None
 
-    def __str__(self, indent: int = 0) -> str:
+    def __str__(self, indent=0):
         raise NotImplementedError()
 
-    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+    def annotation(self, annotation, indent=0):
         raise NotImplementedError()
 
-    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
+    def to_cfa(self, cfa, u, v):
         raise NotImplementedError()
 
-    def execute(self, state: Dict[str, int]) -> None:
+    def execute(self, state):
         raise NotImplementedError()
 
 
 class StmtAssign(Stmt):
     """Variable assignment"""
-    def __init__(self, lhs: ExprVar, rhs: Term) -> None:
+    def __init__(self, lhs, rhs):
         self.lhs = lhs
         self.rhs = rhs
 
-    def execute(self, state: Dict[str, int]) -> None:
+    def execute(self, state):
         state[str(self.lhs)] = self.rhs.eval(StdInt, state)
 
-    def __str__(self, indent: int = 0) -> str:
+    def __str__(self, indent=0):
         return ("    " * indent) + str(self.lhs) + " = " + str(self.rhs)
 
-    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+    def annotation(self, annotation, indent=0):
         assert self.entry is not None
         return "{0}{{{1}\n{0}}}\n{2}".format(
             "    " * indent,
@@ -470,32 +449,32 @@ class StmtAssign(Stmt):
             self.__str__(indent),
         )
 
-    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
+    def to_cfa(self, cfa, u, v):
         self.entry = u
         cfa.add_edge(u, CmdAssign(self.lhs, self.rhs), v)
 
 
 class StmtIf(Stmt):
     """Conditional statement"""
-    def __init__(self, cond: Form, bthen: Stmt, belse: Stmt) -> None:
+    def __init__(self, cond, bthen, belse):
         self.cond = cond
         self.bthen = bthen
         self.belse = belse
 
-    def execute(self, state: Dict[str, int]) -> None:
+    def execute(self, state):
         if (self.cond.eval(state)):
             self.bthen.execute(state)
         else:
             self.belse.execute(state)
 
-    def __str__(self, indent: int = 0) -> str:
+    def __str__(self, indent=0):
         program = ("    " * indent) + "if " + str(self.cond) + ":\n"
         program += self.bthen.__str__(indent + 1) + "\n"
         program += ("    " * indent) + "else:\n"
         program += self.belse.__str__(indent + 1)
         return program
 
-    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+    def annotation(self, annotation, indent=0):
         assert self.entry is not None
         return "{0}{{{1}\n{0}}}\n{0}if {2}:\n{3}\n{0}else:\n{4}".format(
             "    " * indent,
@@ -505,7 +484,7 @@ class StmtIf(Stmt):
             self.belse.annotation(annotation, indent + 1),
         )
 
-    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
+    def to_cfa(self, cfa, u, v):
         self.entry = u
         then_target = cfa.fresh_vertex()
         else_target = cfa.fresh_vertex()
@@ -517,24 +496,24 @@ class StmtIf(Stmt):
 
 class StmtBlock(Stmt):
     """Sequence of statements"""
-    def __init__(self, block: List[Stmt]) -> None:
+    def __init__(self, block):
         self.block = block
 
-    def execute(self, state: Dict[str, int]) -> None:
+    def execute(self, state):
         for stmt in self.block:
             stmt.execute(state)
 
-    def __str__(self, indent: int = 0) -> str:
+    def __str__(self, indent=0):
         return "\n".join(map(lambda x: x.__str__(indent), self.block))
 
-    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+    def annotation(self, annotation, indent=0):
         assert self.entry is not None
         return "\n".join(
             stmt.annotation(annotation, indent)
             for stmt in self.block
         )
 
-    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
+    def to_cfa(self, cfa, u, v):
         self.entry = u
         last = u
         for i in range(len(self.block) - 1):
@@ -547,20 +526,20 @@ class StmtBlock(Stmt):
 
 class StmtWhile(Stmt):
     """While loop"""
-    def __init__(self, cond: Form, body: Stmt) -> None:
+    def __init__(self, cond, body):
         self.cond = cond
         self.body = body
 
-    def execute(self, state: Dict[str, int]) -> None:
+    def execute(self, state):
         while self.cond.eval(state):
             self.body.execute(state)
 
-    def __str__(self, indent: int = 0) -> str:
+    def __str__(self, indent=0):
         program = ("    " * indent) + "while " + str(self.cond) + ":\n"
         program += self.body.__str__(indent + 1)
         return program
 
-    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+    def annotation(self, annotation, indent=0):
         assert self.entry is not None
         return "{0}{{{1}\n{0}}}\n{0}while {2}:\n{3}".format(
             "    " * indent,
@@ -569,7 +548,7 @@ class StmtWhile(Stmt):
             self.body.annotation(annotation, indent + 1),
         )
 
-    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
+    def to_cfa(self, cfa, u, v):
         self.entry = u
         w = cfa.fresh_vertex()
         cfa.add_edge(u, CmdAssume(self.cond), w)
@@ -579,36 +558,36 @@ class StmtWhile(Stmt):
 
 class StmtPanic(Stmt):
     """Panic"""
-    def __str__(self, indent: int = 0) -> str:
+    def __str__(self, indent=0):
         return ("    " * indent) + "panic()"
 
-    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+    def annotation(self, annotation, indent=0):
         assert self.entry is not None
         return "{0}{{{1}\n{0}}}\n{0}panic()".format(
             "    " * indent,
             str(annotation.get_entry(self.entry, indent)),
         )
 
-    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
+    def to_cfa(self, cfa, u, v):
         self.entry = u
-        cfa.add_edge(u, CmdPanic(), cfa.loc_panic)
+        cfa.panic.add(u)
 
-    def execute(self, state: Dict[str, int]) -> None:
+    def execute(self, state):
         raise RuntimeError("Program threw exception")
 
 
 class StmtPrint(Stmt):
     """Print to stdout"""
-    def __init__(self, expr: Term) -> None:
+    def __init__(self, expr):
         self.expr = expr
 
-    def execute(self, state: Dict[str, int]) -> None:
+    def execute(self, state):
         print(self.expr.eval(StdInt, state))
 
-    def __str__(self, indent: int = 0) -> str:
+    def __str__(self, indent=0):
         return ("    " * indent) + "print(" + str(self.expr) + ")"
 
-    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+    def annotation(self, annotation, indent=0):
         assert self.entry is not None
         return "{0}{{{1}\n{0}}}\n{0}print({2})".format(
             "    " * indent,
@@ -616,21 +595,21 @@ class StmtPrint(Stmt):
             str(self.expr),
         )
 
-    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
+    def to_cfa(self, cfa, u, v):
         self.entry = u
         cfa.add_edge(u, CmdPrint(self.expr), v)
 ############################################################################
 
 
-def mk_numeral(toks: Tuple[str]) -> List[ExprNumeral]:
+def mk_numeral(toks):
     return [ExprNumeral(int(toks[0]))]
 
 
-def mk_var(toks: Tuple[str]) -> List[ExprVar]:
+def mk_var(toks):
     return [ExprVar(toks[0])]
 
 
-def mk_plus_minus(toks: Tuple[List[Term]]) -> List[Term]:
+def mk_plus_minus(toks):
     curr = toks[0][0]
     for i in range(1, len(toks[0]), 2):
         if toks[0][i] == "+":
@@ -641,27 +620,27 @@ def mk_plus_minus(toks: Tuple[List[Term]]) -> List[Term]:
     return [curr]
 
 
-def mk_mul(toks: Tuple[List[Term]]) -> List[Term]:
+def mk_mul(toks):
     return [reduce(ExprMul, toks[0][0::2])]
 
 
-def mk_neg(toks: Tuple[Tuple[str, Term]]) -> List[ExprNeg]:
+def mk_neg(toks):
     return [ExprNeg(toks[0][1])]
 
 
-def mk_not(toks: Tuple[Tuple[str, Form]]) -> List[FormNot]:
+def mk_not(toks):
     return [FormNot(toks[0][1])]
 
 
-def mk_and(toks: Tuple[List[Form]]) -> List[Form]:
+def mk_and(toks):
     return [reduce(FormAnd, toks[0][0::2])]
 
 
-def mk_or(toks: Tuple[List[Form]]) -> List[Form]:
+def mk_or(toks):
     return [reduce(FormOr, toks[0][0::2])]
 
 
-def mk_atom(toks: Tuple[Term, str, Term]) -> Form:
+def mk_atom(toks):
     if toks[1] == "=":
         return FormEq(toks[0], toks[2])
     elif toks[1] == "<":
@@ -673,30 +652,30 @@ def mk_atom(toks: Tuple[Term, str, Term]) -> Form:
         )
 
 
-def mk_panic(toks: Tuple[str]) -> StmtPanic:
+def mk_panic(toks):
     return StmtPanic()
 
 
-def mk_assign(toks: Tuple[ExprVar, str, Term]) -> StmtAssign:
+def mk_assign(toks):
     return StmtAssign(toks[0], toks[2])
 
 
-def mk_block(toks: List[Stmt]) -> Stmt:
+def mk_block(toks):
     if len(toks) == 1:
         return toks[0]
     else:
         return StmtBlock(toks)
 
 
-def mk_while(toks: Tuple[str, Form, Stmt]) -> StmtWhile:
+def mk_while(toks):
     return StmtWhile(toks[1], toks[2])
 
 
-def mk_if(toks: Tuple[str, Form, Stmt, Stmt]) -> StmtIf:
+def mk_if(toks):
     return StmtIf(toks[1], toks[2], toks[3])
 
 
-def mk_print(toks: Tuple[str, Term]) -> StmtPrint:
+def mk_print(toks):
     return StmtPrint(toks[1])
 
 
