@@ -21,8 +21,7 @@ if __name__ == '__main__':
         print(unwinding)
         print(pgm.annotation(unwinding))
         print("{{{}\n}}".format(unwinding.get_entry(unwinding.cfa.loc_exit)))
-        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
-            code.interact(local=locals())
+        code.interact(local=locals())
     elif (sys.argv[1] == "exec"):
         cfa = ControlFlowAutomaton()
         pgm.to_cfa(cfa, cfa.loc_entry, cfa.loc_exit)
