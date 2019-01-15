@@ -5,7 +5,7 @@ import unittest
 import z3
 
 
-def init_z3(z3path: str = '/u/cos516/z3/bin/') -> None:
+def init_z3(z3path='/u/cos516/z3/bin/'):
     if 'courselab' in socket.gethostname():
         logging.info('Initializing Z3 at path: {}'.format(z3path))
         z3.init(z3path)

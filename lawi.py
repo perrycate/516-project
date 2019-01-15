@@ -1,16 +1,7 @@
 from collections import defaultdict
 from functools import reduce
 import logging
-from sil import Annotation, Command, ControlFlowAutomaton, Stmt
-from typing import (
-    Any,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-    Set,
-    Tuple,
-)
+from sil import Annotation, ControlFlowAutomaton
 import z3
 from z3 import (
     And,
@@ -22,21 +13,19 @@ from z3 import (
 )
 
 
-def models(lhs: z3.BoolRef, rhs: z3.BoolRef) -> bool:
+def models(lhs, rhs):
     s = z3.Solver()
     s.add(Not(Implies(lhs, rhs)))
     return bool(unsat == s.check())
 
 
-def timeshift(
-        u_pi: Iterable[Command]
-) -> Tuple[List[z3.BoolRef], Dict[str, int]]:
-    vars_times: Dict[str, int] = defaultdict(int)
+def timeshift(u_pi):
+    vars_times = defaultdict(int)
     ret = [phi.to_formula(vars_times) for phi in u_pi]
     return ret, vars_times
 
 
-def untimeshift(phi: z3.BoolRef, times: Dict[str, int]) -> z3.BoolRef:
+def untimeshift(phi, times):
     for k, v in times.items():
         while v:
             phi = z3.substitute(phi, (Int(k + ("'" * v)), Int(k)))
@@ -46,49 +35,49 @@ def untimeshift(phi: z3.BoolRef, times: Dict[str, int]) -> z3.BoolRef:
 
 
 class UnwindingVertex(Annotation):
-    next_num: int = 0
+    next_num = 0
 
     def __init__(
             self,
-            parent: Optional['UnwindingVertex'],
-            transition: Optional[Command],
-            location: int,
-    ) -> None:
-        self.num: int = UnwindingVertex.next_num
+            parent,
+            transition,
+            location,
+    ):
+        self.num = UnwindingVertex.next_num
         UnwindingVertex.next_num += 1
-        self.parent: Optional['UnwindingVertex'] = parent
+        self.parent = parent
         if self.parent is not None:
             self.parent.children.add(self)
 
-        self.transition: Optional[Command] = transition  # \( T \)
-        self.location: int = location  # \( M_v(self) \)
+        self.transition = transition  # \( T \)
+        self.location = location  # \( M_v(self) \)
         # \( M_e(self.parent, self) \)
-        self.children: Set['UnwindingVertex'] = set()
-        self.label: z3.BoolRef = BoolVal(True)  # \( \psi(self) \)
-        self.covered: bool = False
+        self.children = set()
+        self.label = BoolVal(True)  # \( \psi(self) \)
+        self.covered = False
 
-    def __lt__(self, other: Any) -> bool:  # \( \prec \)
+    def __lt__(self, other):  # \( \prec \)
         return isinstance(other, UnwindingVertex) and self.num < other.num
 
-    def __le__(self, other: Any) -> bool:
+    def __le__(self, other):
         return isinstance(other, UnwindingVertex) and self.num <= other.num
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other):
         return isinstance(other, UnwindingVertex) and self.num == other.num
 
-    def __gt__(self, other: Any) -> bool:
+    def __gt__(self, other):
         return isinstance(other, UnwindingVertex) and self.num > other.num
 
-    def __ge__(self, other: Any) -> bool:
+    def __ge__(self, other):
         return isinstance(other, UnwindingVertex) and self.num >= other.num
 
-    def __ne__(self, other: Any) -> bool:
+    def __ne__(self, other):
         return isinstance(other, UnwindingVertex) and self.num != other.num
 
-    def __hash__(self) -> int:
+    def __hash__(self):
         return self.num.__hash__()
 
-    def __str__(self) -> str:
+    def __str__(self):
         return (
             "Vertex {}:"
             " parent {},"
@@ -106,13 +95,13 @@ class UnwindingVertex(Annotation):
         )
 
     # \( other \sqsubseteq self \)
-    def has_weak_ancestor(self, other: 'UnwindingVertex') -> bool:
+    def has_weak_ancestor(self, other):
         return self == other or (
             self.parent is not None and self.parent.has_weak_ancestor(other)
         )
 
     @property
-    def ancestors_path(self) -> List['UnwindingVertex']:
+    def ancestors_path(self):
         if self.parent is None:
             return [self]
 
@@ -121,7 +110,7 @@ class UnwindingVertex(Annotation):
         return v_pi
 
     @property
-    def transition_path(self) -> List[Command]:
+    def transition_path(self):
         if self.parent is None:
             return []
 
@@ -131,22 +120,22 @@ class UnwindingVertex(Annotation):
         return u_pi
 
     @property
-    def descendants(self) -> Set['UnwindingVertex']:
+    def descendants(self):
         descendants = {self}
         for child in self.children:
             descendants |= child.descendants
         return descendants
 
     @property
-    def is_leaf(self) -> bool:
+    def is_leaf(self):
         return len(self.children) == 0
 
 
 class Unwinding(Annotation):
     def __init__(
             self,
-            cfa: ControlFlowAutomaton,
-    ) -> None:
+            cfa,
+    ):
         eps = UnwindingVertex(
             location=cfa.loc_entry,
             parent=None,
@@ -154,20 +143,18 @@ class Unwinding(Annotation):
         )
 
         # If error path is not None, unwinding is unsafe
-        self._error_path: Optional[
-            Tuple[List[UnwindingVertex], z3.ModelRef]
-        ] = None
+        self._error_path = None
 
         # \( V \leftarrow \{ \epsilon \} \)
-        self.verts: Set[UnwindingVertex] = {eps}
+        self.verts = {eps}
         # \( E \) is stored as successor lists on vertices
         # \( \psi \) is stored as labels on vertices
         # \( \triangleright \)
-        self.covering: Set[Tuple[UnwindingVertex, UnwindingVertex]] = set()
+        self.covering = set()
         # self.uncovered_verts caches uncovered vertices
         # \( \epsilon \) is initially uncovered
-        self.uncovered_leaves: Set[UnwindingVertex] = {eps}
-        self.cfa: ControlFlowAutomaton = cfa  # cfa.verts is \( \Lambda \)
+        self.uncovered_leaves = {eps}
+        self.cfa = cfa  # cfa.verts is \( \Lambda \)
         while self.uncovered_leaves and not self.is_unsafe:
             self.check_cover_cache()
 
@@ -180,7 +167,7 @@ class Unwinding(Annotation):
 
             self.dfs(v)
 
-    def __str__(self) -> str:
+    def __str__(self):
         if self.is_unsafe:
             assert self.error_path is not None
             error_path, error_assign = self.error_path
@@ -193,13 +180,13 @@ class Unwinding(Annotation):
             "".join(map("\n\t{}".format, self.verts)),
         )
 
-    def close(self, v: UnwindingVertex) -> None:
+    def close(self, v):
         logging.debug("Closing: " + str(v))
         for w in self.verts:
             if w < v and w.location == v.location:
                 self.cover(v, w)
 
-    def dfs(self, v: UnwindingVertex) -> None:
+    def dfs(self, v):
         logging.debug("Searching: " + str(v))
         if self.is_unsafe:
             return
@@ -210,7 +197,7 @@ class Unwinding(Annotation):
 
         if v.location == self.cfa.loc_panic:
             self.refine(v)
-            w: Optional[UnwindingVertex] = v
+            w = v
             while w is not None:
                 self.close(w)
                 w = w.parent
@@ -219,7 +206,7 @@ class Unwinding(Annotation):
         for w in v.children:
             self.dfs(w)
 
-    def check_cover_cache(self) -> None:
+    def check_cover_cache(self):
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
             uncovered_leaves = set(
                 v
@@ -243,9 +230,9 @@ class Unwinding(Annotation):
                 "\n\t".join(str(v) for v in leaves_not_in_covering),
             )
 
-    def fix_cover_cache(self) -> None:
+    def fix_cover_cache(self):
         self.uncovered_leaves = set()
-        covered_verts: Set[UnwindingVertex] = reduce(
+        covered_verts = reduce(
             set.union,
             [v.descendants for (v, _) in self.covering],
             set(),
@@ -260,7 +247,7 @@ class Unwinding(Annotation):
 
         self.check_cover_cache()
 
-    def cover(self, v: UnwindingVertex, w: UnwindingVertex) -> None:
+    def cover(self, v, w):
         logging.debug("Covering: " + str(v))
         if v.covered or v.location != w.location or w.has_weak_ancestor(v):
             return
@@ -274,7 +261,7 @@ class Unwinding(Annotation):
                 self.covering.discard((x, y))
         self.fix_cover_cache()
 
-    def refine(self, v: UnwindingVertex) -> None:
+    def refine(self, v):
         logging.debug("Refining: " + str(v))
         if v.location != self.cfa.loc_panic:
             return
@@ -302,7 +289,7 @@ class Unwinding(Annotation):
                 v_pi[i + 2].label = z3.simplify(And(v_pi[i + 2].label, phi))
         self.fix_cover_cache()
 
-    def expand(self, v: UnwindingVertex) -> None:
+    def expand(self, v):
         logging.debug("Expanding: " + str(v))
         if v.covered or v.children:
             return
@@ -320,20 +307,20 @@ class Unwinding(Annotation):
 
     def mark_unsafe(
             self,
-            unsafe_vert: UnwindingVertex,
-            sat_assign: z3.ModelRef
-    ) -> None:
+            unsafe_vert,
+            sat_assign
+    ):
         self._error_path = (unsafe_vert.ancestors_path, sat_assign)
 
     @property
-    def is_unsafe(self) -> bool:
+    def is_unsafe(self):
         return self._error_path is not None
 
     @property
-    def error_path(self) -> Optional[Tuple[List[UnwindingVertex], z3.ModelRef]]:
+    def error_path(self):
         return self._error_path
 
-    def get_entry(self, loc: int, indent: int = 0) -> str:
+    def get_entry(self, loc, indent=0):
         formatStr = "\n" + (indent + 1) * "    " + "{}"
         return "Location {}:{}".format(
             loc,
@@ -345,7 +332,7 @@ class Unwinding(Annotation):
         )
 
     @staticmethod
-    def analyze(stmt: Stmt) -> 'Unwinding':
+    def analyze(stmt):
         cfa = ControlFlowAutomaton()
         stmt.to_cfa(cfa, cfa.loc_entry, cfa.loc_exit)
         return Unwinding(cfa)
