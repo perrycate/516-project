@@ -3,9 +3,8 @@ header-includes: |
     \usepackage[margin=1in]{geometry}
 ---
 
-The purpose of the project report is to convey clearly the problem you addressed, the work you did, and the results. It should include at least the following content (section headings can vary according to the nature of project):
-The report should be 5-10 pages (excluding references) with an 11pt font.  (Naturally, if there is no software artifact attached to your project and the report is your main deliverable, your report should be longer).  Keep your writing precise, use figures and small illustrative examples liberally, and tables where appropriate.  Feel free to add an appendix for extended details.
-
+# A Python Implementation of "Lazy Abstraction with Interpolants"
+Perry Cate (ncate) and Andrew Wonnacott (ajw4)
 
 ## Introduction
 
@@ -18,14 +17,16 @@ Python is commonly used in academia for its readability, compactness, and flexib
 It has well-supported bindings for the Z3 Theorem prover, which we have used for our assignments in class.
 By using Python we can also reuse existing parsing infrastructure provided to us for assignment 4, which was also written in Python.
 
-% <TODO section on benefits of lazy abstraction vs other models? If so, in introduction or overview?>
+### Benefits of Lazy Abstraction
+Model checkers such as CEGAR, which we discussed in class, compute all possible transitions between every state in a program.
+Lazy Abstraction drastically reduces the necessary amount of work by only doing enough to prove that the error states are unreachable.
 
 ## Overview
 ### Tools and Architecture
 There are 3 main features required for this system.
 First, the program must be capable of parsing a program into an easily manipulable form. (In this case, a CFA.)
 Second, the program must be capable of generating interpolants between vertices in the CFA.
-Most importantly, the program must be capable of using the generated interpolants to % <TODO “DO THE THING”>
+Most importantly, the program must be capable of using the generated interpolants to gradually weaken the CFA labels until it concludes that either there is no path to the error state, or the program is unsafe.
 While the core objective of the project was to implement the last part, the system as a whole would only work if all three were implemented.
 To this end, we reused the given code for assignment 4 for the program parsing, and used Z3 for interpolants.
 Unfortunately, modern Z3 no longer supports interpolant generation, so we included in our project an older version of Z3 with some modifications and bugfixes to suit our needs.
@@ -33,11 +34,11 @@ Unfortunately, modern Z3 no longer supports interpolant generation, so we includ
 ### Algorithm Overview % <TODO move to beginning of project tasks?>
 At a high level, the Lazy Abstraction algorithm unwinds the CFA into a tree, and gives each location a label. 
 Initially this label is always True.
-The algorithm incrementally expands the tree while using interpolants to strengthen the labels as necessary until a path to the error state is found, or the tree can no longer be expanded.
+The algorithm incrementally expands the tree while using interpolants to weaken the labels as necessary until a path to the error state is found, or the tree can no longer be expanded.
 
 ![Example of a program unwinding](./unwinding_example.png){ width=70% }
 
-To this end, McMillian describes 3 main functions to implement: Expand, Refine, and Cover.
+McMillian describes 3 main functions to implement: Expand, Refine, and Cover.
 Expand adds more vertices to the tree corresponding to possible transitions from a given vertex.
 Refine is only called on error states.
 By generating an interpolant between each vertex in the path from the root of the tree to an error state, Refine strengthens the labels for every vertex in the path, proving the error state is unreachable.
