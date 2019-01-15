@@ -64,17 +64,16 @@ Perry added code for covering/uncovering vertices, assorted tests and helper fun
 Perry also wrote the initial draft text for the final paper, which was subsequently revised and further developed by Perry and Andrew together.
 The project presentation was also developed collaboratively, with slides distributed by topic.
 Perry wrote the slides summarizing Expand, Refine, and Conquer Cover, as well as <TODO> while Andrew worked on <TODO>
-% <TODO project presentation work distribution? I can’t remember who did what but we can definitely figure this out from the version history.>
+% <TODO presentation work distribution? I can’t remember who did what but we can definitely figure this out from the version history.>
 
 One significant challenge we faced was determining and implementing a way for users to register an error state.
-Our solution was to implement a "panic" op which can be used in SIL programs, and indicates a transition to an error state.
+Our solution was to implement a `panic()` op which can be used in SIL programs, and indicates a transition to an error state.
 Unfortunately this caused a tricky bug in which our code would infinite loop.
 Our newly added "Error state" was considered an uncover leaf, and would never be covered.
-We fixed this issue by making the panic op register the previous vertex as an error state, rather than making a transition to an entirely new vertex.
+We fixed this issue by making `panic()` register the previous vertex as an error state, rather than making a transition to an entirely new vertex.
 
 ## Results
 We are pleased to say that our implementation is complete and works correctly.
-<TODO explain how we set error states and sample input/output, once that’s ironed out.>
 To test our implementation we used a variety of tests including the tests from assignment 4, the example code mentioned in the paper, and custom tests we developed ourselves, which can be found in <TODO the appendix>.
 Many of our tests are near duplicates of each other, with slight variations to trigger differing patterns in the generated CFA.
 For example, one test may execute a piece of code 3 times before exiting, while another contains a single error that causes it to loop indefinitely.
@@ -102,8 +101,16 @@ Our code is written in Python, and includes tests and a patched version of Z3.
 <TODO possible future direction, idk what yet>
 
 
-## Installation
+
+## Installation and Usage
+<TODO this should go elsewhere>
 Requirements:
-Python 3.5 or greater
-Our fork of z3. Set PYTHONPATH=z3/build/python, and LD\_LIBRARY\_PATH=z3/build before executing.
+
+ * Python 3.4 or greater
+ * Our fork of z3. Set `PYTHONPATH=z3/build/python`, and `LD_LIBRARY_PATH=z3/build` before executing.
+
+The checker is invoked by `python run_lawi.py lawi <filename>`, where `<filename>` is a program written in the SIL variant used in class.
+Insert `panic()` anywhere in the program.
+When the checker is run, it will output `Safe` if the `panic()` location cannot be reached, `Unsafe` otherwise. In either case it will also pint the annoted program.
+
 
