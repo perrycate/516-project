@@ -1,0 +1,16 @@
+l := 0;
+while (not (new = old)) {
+      if (not (l = 0)) {
+         panic()
+      } else {
+         x := 0
+      };
+      l := 1;
+      old := new;
+      if (star = 0) {
+         l := 0;
+         new := new + 1
+      } else {
+         x := 0
+      }
+}

@@ -146,13 +146,9 @@ class Unwinding(Annotation):
     def __init__(
             self,
             cfa: ControlFlowAutomaton,
-            loc_entry: int,
-            loc_exit: int
     ) -> None:
-        self.loc_entry: int = loc_entry  # \( l_i \)
-        self.loc_exit: int = loc_exit  # \( l_f \)
         eps = UnwindingVertex(
-            location=loc_entry,
+            location=cfa.loc_entry,
             parent=None,
             transition=None,
         )
@@ -212,7 +208,7 @@ class Unwinding(Annotation):
         if v.covered:
             return
 
-        if v.location == self.loc_exit:
+        if v.location == self.cfa.loc_panic:
             self.refine(v)
             w: Optional[UnwindingVertex] = v
             while w is not None:
@@ -280,7 +276,7 @@ class Unwinding(Annotation):
 
     def refine(self, v: UnwindingVertex) -> None:
         logging.debug("Refining: " + str(v))
-        if v.location != self.loc_exit:
+        if v.location != self.cfa.loc_panic:
             return
         if models(v.label, BoolVal(False)):
             return
@@ -351,7 +347,5 @@ class Unwinding(Annotation):
     @staticmethod
     def analyze(stmt: Stmt) -> 'Unwinding':
         cfa = ControlFlowAutomaton()
-        loc_entry = cfa.fresh_vertex()
-        loc_exit = cfa.fresh_vertex()
-        stmt.to_cfa(cfa, loc_entry, loc_exit)
-        return Unwinding(cfa, loc_entry, loc_exit)
+        stmt.to_cfa(cfa, cfa.loc_entry, cfa.loc_exit)
+        return Unwinding(cfa)

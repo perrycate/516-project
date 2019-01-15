@@ -22,14 +22,13 @@ if __name__ == '__main__':
         unwinding = Unwinding.analyze(pgm)
         print(unwinding)
         print(pgm.annotation(unwinding))
-        print("{{{}\n}}".format(unwinding.get_entry(unwinding.loc_exit)))
+        print("{{{}\n}}".format(unwinding.get_entry(unwinding.cfa.loc_exit)))
+        print("\nPanic:\n{{{}\n}}".format(unwinding.get_entry(unwinding.cfa.loc_panic)))
         if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
             code.interact(local=locals())
     elif (sys.argv[1] == "exec"):
         cfa = ControlFlowAutomaton()
-        loc_entry = cfa.fresh_vertex()
-        loc_exit = cfa.fresh_vertex()
-        pgm.to_cfa(cfa, loc_entry, loc_exit)
+        pgm.to_cfa(cfa, cfa.loc_entry, cfa.loc_exit)
         vars = cfa.vars()
         state = {}
         for var in vars:

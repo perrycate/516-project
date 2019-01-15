@@ -10,11 +10,9 @@ from pyparsing import (
 )
 from functools import reduce
 from typing import (
-    Any,
     Dict,
     List,
     Optional,
-    Sequence,
     Set,
     Tuple,
     Type,
@@ -310,12 +308,12 @@ class Command:
 
 class CmdAssign(Command):
     """Variable assignment"""
-    def __init__(self, lhs: str, rhs: Term) -> None:
+    def __init__(self, lhs: ExprVar, rhs: Term) -> None:
         self.lhs = lhs
         self.rhs = rhs
 
     def vars(self) -> Set[str]:
-        return set([self.lhs]) | self.rhs.vars()
+        return set([str(self.lhs)]) | self.rhs.vars()
 
     def __str__(self) -> str:
         return "{} := {}".format(self.lhs, self.rhs)
@@ -323,9 +321,9 @@ class CmdAssign(Command):
     def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
         rhs = self.rhs.to_term(times)
         if times is not None:
-            times[self.lhs] += 1
+            times[str(self.lhs)] += 1
 
-        lhs = ExprVar(self.lhs).to_term(times)
+        lhs = self.lhs.to_term(times)
         return lhs == rhs
 
 
@@ -342,6 +340,18 @@ class CmdAssume(Command):
 
     def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
         return self.condition.to_formula(times)
+
+
+class CmdPanic(Command):
+    """Panic!"""
+    def vars(self) -> Set[str]:
+        return set()
+
+    def __str__(self) -> str:
+        return "panic()"
+
+    def to_formula(self, times: Optional[Dict[str, int]] = None) -> z3.BoolRef:
+        return BoolVal(True)
 
 
 class CmdPrint(Command):
@@ -366,6 +376,9 @@ class ControlFlowAutomaton:
         self.succs: Dict[int, Set[int]] = {}
         self.labels: Dict[Tuple[int, int], Command] = {}
         self.entry: int = 0
+        self.loc_entry: int = self.fresh_vertex()
+        self.loc_exit: int = self.fresh_vertex()
+        self.loc_panic: int = self.fresh_vertex()
 
     def fresh_vertex(self) -> int:
         v = self.max_loc
@@ -395,6 +408,7 @@ class ControlFlowAutomaton:
     def locations(self) -> Set[int]:
         """The set of locations (vertices) in the CFA"""
         return set(range(self.max_loc))
+
 ############################################################################
 
 
@@ -438,15 +452,15 @@ class Stmt:
 
 class StmtAssign(Stmt):
     """Variable assignment"""
-    def __init__(self, lhs: str, rhs: Term) -> None:
+    def __init__(self, lhs: ExprVar, rhs: Term) -> None:
         self.lhs = lhs
         self.rhs = rhs
 
     def execute(self, state: Dict[str, int]) -> None:
-        state[self.lhs] = self.rhs.eval(StdInt, state)
+        state[str(self.lhs)] = self.rhs.eval(StdInt, state)
 
     def __str__(self, indent: int = 0) -> str:
-        return ("    " * indent) + self.lhs + " = " + str(self.rhs)
+        return ("    " * indent) + str(self.lhs) + " = " + str(self.rhs)
 
     def annotation(self, annotation: Annotation, indent: int = 0) -> str:
         assert self.entry is not None
@@ -503,7 +517,7 @@ class StmtIf(Stmt):
 
 class StmtBlock(Stmt):
     """Sequence of statements"""
-    def __init__(self, block: Sequence[Stmt]) -> None:
+    def __init__(self, block: List[Stmt]) -> None:
         self.block = block
 
     def execute(self, state: Dict[str, int]) -> None:
@@ -563,6 +577,26 @@ class StmtWhile(Stmt):
         self.body.to_cfa(cfa, w, u)
 
 
+class StmtPanic(Stmt):
+    """Panic"""
+    def __str__(self, indent: int = 0) -> str:
+        return ("    " * indent) + "panic()"
+
+    def annotation(self, annotation: Annotation, indent: int = 0) -> str:
+        assert self.entry is not None
+        return "{0}{{{1}\n{0}}}\n{0}panic()".format(
+            "    " * indent,
+            str(annotation.get_entry(self.entry, indent)),
+        )
+
+    def to_cfa(self, cfa: ControlFlowAutomaton, u: int, v: int) -> None:
+        self.entry = u
+        cfa.add_edge(u, CmdPanic(), cfa.loc_panic)
+
+    def execute(self, state: Dict[str, int]) -> None:
+        raise RuntimeError("Program threw exception")
+
+
 class StmtPrint(Stmt):
     """Print to stdout"""
     def __init__(self, expr: Term) -> None:
@@ -588,15 +622,15 @@ class StmtPrint(Stmt):
 ############################################################################
 
 
-def mk_numeral(toks: Sequence[str]) -> List[ExprNumeral]:
+def mk_numeral(toks: Tuple[str]) -> List[ExprNumeral]:
     return [ExprNumeral(int(toks[0]))]
 
 
-def mk_var(toks: Sequence[str]) -> List[ExprVar]:
-    return [ExprVar(str(toks[0]))]
+def mk_var(toks: Tuple[str]) -> List[ExprVar]:
+    return [ExprVar(toks[0])]
 
 
-def mk_plus_minus(toks: Sequence[Sequence[Term]]) -> List[Term]:
+def mk_plus_minus(toks: Tuple[List[Term]]) -> List[Term]:
     curr = toks[0][0]
     for i in range(1, len(toks[0]), 2):
         if toks[0][i] == "+":
@@ -607,27 +641,27 @@ def mk_plus_minus(toks: Sequence[Sequence[Term]]) -> List[Term]:
     return [curr]
 
 
-def mk_mul(toks: Sequence[Sequence[Term]]) -> List[Term]:
+def mk_mul(toks: Tuple[List[Term]]) -> List[Term]:
     return [reduce(ExprMul, toks[0][0::2])]
 
 
-def mk_neg(toks: Sequence[Sequence[Term]]) -> List[ExprNeg]:
+def mk_neg(toks: Tuple[Tuple[str, Term]]) -> List[ExprNeg]:
     return [ExprNeg(toks[0][1])]
 
 
-def mk_not(toks: Sequence[Sequence[Form]]) -> List[FormNot]:
+def mk_not(toks: Tuple[Tuple[str, Form]]) -> List[FormNot]:
     return [FormNot(toks[0][1])]
 
 
-def mk_and(toks: Sequence[Sequence[Form]]) -> List[Form]:
+def mk_and(toks: Tuple[List[Form]]) -> List[Form]:
     return [reduce(FormAnd, toks[0][0::2])]
 
 
-def mk_or(toks: Sequence[Sequence[Form]]) -> List[Form]:
+def mk_or(toks: Tuple[List[Form]]) -> List[Form]:
     return [reduce(FormOr, toks[0][0::2])]
 
 
-def mk_atom(toks: Sequence[Term]) -> Form:
+def mk_atom(toks: Tuple[Term, str, Term]) -> Form:
     if toks[1] == "=":
         return FormEq(toks[0], toks[2])
     elif toks[1] == "<":
@@ -639,26 +673,30 @@ def mk_atom(toks: Sequence[Term]) -> Form:
         )
 
 
-def mk_assign(toks: Sequence[Term]) -> StmtAssign:
-    return StmtAssign(str(toks[0]), toks[2])
+def mk_panic(toks: Tuple[str]) -> StmtPanic:
+    return StmtPanic()
 
 
-def mk_block(toks: Sequence[Stmt]) -> Stmt:
+def mk_assign(toks: Tuple[ExprVar, str, Term]) -> StmtAssign:
+    return StmtAssign(toks[0], toks[2])
+
+
+def mk_block(toks: List[Stmt]) -> Stmt:
     if len(toks) == 1:
         return toks[0]
     else:
         return StmtBlock(toks)
 
 
-def mk_while(toks: Tuple[Any, Form, Stmt]) -> StmtWhile:
+def mk_while(toks: Tuple[str, Form, Stmt]) -> StmtWhile:
     return StmtWhile(toks[1], toks[2])
 
 
-def mk_if(toks: Tuple[Any, Form, Stmt, Stmt]) -> StmtIf:
+def mk_if(toks: Tuple[str, Form, Stmt, Stmt]) -> StmtIf:
     return StmtIf(toks[1], toks[2], toks[3])
 
 
-def mk_print(toks: Tuple[Any, Term]) -> StmtPrint:
+def mk_print(toks: Tuple[str, Term]) -> StmtPrint:
     return StmtPrint(toks[1])
 
 
@@ -694,6 +732,7 @@ block = Forward()
 assign_stmt = varname + ":=" + expr
 if_stmt = Keyword("if") + formula + block + Keyword("else").suppress() + block
 while_stmt = Keyword("while") + formula + block
+panic_stmt = Literal("panic") + Literal('(').suppress() + Literal(')').suppress()
 print_stmt = (
     Literal("print")
 ) + (
@@ -703,7 +742,7 @@ print_stmt = (
 ) + (
     Literal(')').suppress()
 )
-stmt = if_stmt ^ while_stmt ^ print_stmt ^ assign_stmt
+stmt = if_stmt ^ while_stmt ^ print_stmt ^ assign_stmt ^ panic_stmt
 block << (
     Literal('{').suppress()
 ) + (
@@ -712,6 +751,7 @@ block << (
     Literal('}').suppress()
 )
 program = delimitedList(stmt, delim=';')
+panic_stmt.setParseAction(mk_panic)
 assign_stmt.setParseAction(mk_assign)
 if_stmt.setParseAction(mk_if)
 while_stmt.setParseAction(mk_while)
