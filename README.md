@@ -66,7 +66,11 @@ The project presentation was also developed collaboratively, with slides distrib
 Perry wrote the slides summarizing Expand, Refine, and Conquer Cover, as well as <TODO> while Andrew worked on <TODO>
 % <TODO project presentation work distribution? I can’t remember who did what but we can definitely figure this out from the version history.>
 
-The most challenging part of the assignment, besides understanding the paper, was <TODO whatever bug we’re trying to figure out now happens to end up being?>
+One significant challenge we faced was determining and implementing a way for users to register an error state.
+Our solution was to implement a "panic" op which can be used in SIL programs, and indicates a transition to an error state.
+Unfortunately this caused a tricky bug in which our code would infinite loop.
+Our newly added "Error state" was considered an uncover leaf, and would never be covered.
+We fixed this issue by making the panic op register the previous vertex as an error state, rather than making a transition to an entirely new vertex.
 
 ## Results
 We are pleased to say that our implementation is complete and works correctly.
