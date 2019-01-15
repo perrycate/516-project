@@ -42,6 +42,7 @@ class UnwindingVertex(Annotation):
             parent,
             transition,
             location,
+            owner,
     ):
         self.num = UnwindingVertex.next_num
         UnwindingVertex.next_num += 1
@@ -54,7 +55,7 @@ class UnwindingVertex(Annotation):
         # \( M_e(self.parent, self) \)
         self.children = set()
         self.label = BoolVal(True)  # \( \psi(self) \)
-        self.covered = False
+        self.owner = owner
 
     def __lt__(self, other):  # \( \prec \)
         return isinstance(other, UnwindingVertex) and self.num < other.num
@@ -130,6 +131,13 @@ class UnwindingVertex(Annotation):
     def is_leaf(self):
         return len(self.children) == 0
 
+    @property
+    def covered(self):
+        return any(
+            self.has_weak_ancestor(w)
+            for (w, x) in self.owner.covering
+        )
+
 
 class Unwinding(Annotation):
     def __init__(
@@ -140,6 +148,7 @@ class Unwinding(Annotation):
             location=cfa.loc_entry,
             parent=None,
             transition=None,
+            owner=self,
         )
 
         # If error path is not None, unwinding is unsafe
@@ -153,12 +162,14 @@ class Unwinding(Annotation):
         self.covering = set()
         # self.uncovered_verts caches uncovered vertices
         # \( \epsilon \) is initially uncovered
-        self.uncovered_leaves = {eps}
-        self.cfa = cfa  # cfa.verts is \( \Lambda \)
-        while self.uncovered_leaves and not self.is_unsafe:
-            self.check_cover_cache()
 
-            v = self.uncovered_leaves.pop()
+        self.cfa = cfa  # cfa.verts is \( \Lambda \)
+        while not self.is_unsafe:
+            try:
+                v = next(self.uncovered_leaves())
+            except StopIteration:
+                break
+
             logging.debug("Unwinding: " + str(v))
             w = v.parent
             while w is not None:
@@ -166,6 +177,11 @@ class Unwinding(Annotation):
                 w = w.parent
 
             self.dfs(v)
+
+    def uncovered_leaves(self):
+        for vert in self.verts:
+            if vert.is_leaf and not vert.covered:
+                yield vert
 
     def __str__(self):
         if self.is_unsafe:
@@ -206,47 +222,6 @@ class Unwinding(Annotation):
         for w in v.children:
             self.dfs(w)
 
-    def check_cover_cache(self):
-        if logging.getLogger().getEffectiveLevel() == logging.DEBUG:
-            uncovered_leaves = set(
-                v
-                for v in self.verts
-                if v.is_leaf and not v.covered
-            )
-            leaves_not_in_covering = set(
-                v
-                for v in self.verts
-                if v.is_leaf and not any(
-                    v.has_weak_ancestor(w)
-                    for (w, x) in self.covering
-                )
-            )
-            assert self.uncovered_leaves == uncovered_leaves, "Uncovered leaves not match\n{}\n{}".format(
-                "\n\t".join(str(v) for v in self.uncovered_leaves),
-                "\n\t".join(str(v) for v in uncovered_leaves),
-            )
-            assert self.uncovered_leaves == leaves_not_in_covering, "Leaves not in covering not match\n{}\n{}".format(
-                "\n\t".join(str(v) for v in self.uncovered_leaves),
-                "\n\t".join(str(v) for v in leaves_not_in_covering),
-            )
-
-    def fix_cover_cache(self):
-        self.uncovered_leaves = set()
-        covered_verts = reduce(
-            set.union,
-            [v.descendants for (v, _) in self.covering],
-            set(),
-        )
-
-        for v in covered_verts:
-            v.covered = True
-        for v in self.verts - covered_verts:
-            v.covered = False
-            if v.is_leaf:
-                self.uncovered_leaves.add(v)
-
-        self.check_cover_cache()
-
     def cover(self, v, w):
         logging.debug("Covering: " + str(v))
         if v.covered or v.location != w.location or w.has_weak_ancestor(v):
@@ -259,7 +234,6 @@ class Unwinding(Annotation):
         for (x, y) in self.covering.copy():
             if y.has_weak_ancestor(v):
                 self.covering.discard((x, y))
-        self.fix_cover_cache()
 
     def refine(self, v):
         logging.debug("Refining: " + str(v))
@@ -287,7 +261,6 @@ class Unwinding(Annotation):
                         self.covering.discard((x, y))
 
                 v_pi[i + 2].label = z3.simplify(And(v_pi[i + 2].label, phi))
-        self.fix_cover_cache()
 
     def expand(self, v):
         logging.debug("Expanding: " + str(v))
@@ -299,11 +272,9 @@ class Unwinding(Annotation):
                 parent=v,
                 transition=self.cfa.command(v.location, m),
                 location=m,
+                owner=self,
             )
             self.verts.add(w)
-            self.uncovered_leaves.add(w)
-            # We are no longer a leaf
-            self.uncovered_leaves.discard(v)
 
     def mark_unsafe(
             self,
