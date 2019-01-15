@@ -85,6 +85,7 @@ class UnwindingVertex(Annotation):
             " location {},"
             " label {},"
             " covered {}"
+            "{}"
         ).format(
             self.num,
             self.parent.num if self.parent is not None else None,
@@ -92,6 +93,7 @@ class UnwindingVertex(Annotation):
             self.location,
             self.label,
             self.covered,
+            ", panic" if self.location in self.owner.cfa.panic else ""
         )
 
     # \( other \sqsubseteq self \)
@@ -128,7 +130,13 @@ class UnwindingVertex(Annotation):
 
     @property
     def is_leaf(self):
-        return len(self.children) == 0 and not self.owner.cfa.loc_exit == self.location
+        return (
+            len(self.children) == 0
+        ) and (
+            not self.owner.cfa.loc_exit == self.location
+        ) and (
+            not models(self.label, BoolVal(False))
+        )
 
     @property
     def covered(self):
@@ -149,12 +157,12 @@ class Unwinding(Annotation):
             transition=None,
             owner=self,
         )
-        import signal
 
-        def signal_handler(sig, frame):
-            unwinding = self
-            import code; code.interact(local=locals())
-        signal.signal(signal.SIGINT, signal_handler)
+        # import signal
+        # def signal_handler(sig, frame):
+        #     unwinding = self
+        #     import code; code.interact(local=locals())
+        # signal.signal(signal.SIGINT, signal_handler)
 
         # If error path is not None, unwinding is unsafe
         self._error_path = None
@@ -216,7 +224,7 @@ class Unwinding(Annotation):
         if v.covered:
             return
 
-        if v.location == self.cfa.loc_panic:
+        if v.location in self.cfa.panic:
             self.refine(v)
             w = v
             while w is not None:
@@ -242,7 +250,7 @@ class Unwinding(Annotation):
 
     def refine(self, v):
         logging.debug("Refining: " + str(v))
-        if v.location != self.cfa.loc_panic:
+        if v.location not in self.cfa.panic:
             return
         if models(v.label, BoolVal(False)):
             return
@@ -256,8 +264,9 @@ class Unwinding(Annotation):
         except z3.ModelRef as model:
             self.mark_unsafe(v, model)
             return
-        import code; code.interact(local=locals())
-        assert(len(v_pi) == len(a_hat) + 2)
+        a_hat.push(BoolVal(False))
+
+        assert(len(v_pi) == len(a_hat) + 1)
         for i in range(len(a_hat)):
             phi = untimeshift(a_hat[i], times)
 

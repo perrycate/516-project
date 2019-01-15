@@ -333,18 +333,6 @@ class CmdAssume(Command):
         return self.condition.to_formula(times)
 
 
-class CmdPanic(Command):
-    """Panic!"""
-    def vars(self):
-        return set()
-
-    def __str__(self):
-        return "panic()"
-
-    def to_formula(self, times=None):
-        return BoolVal(True)
-
-
 class CmdPrint(Command):
     """Print to stdout"""
     def __init__(self, expr):
@@ -369,7 +357,7 @@ class ControlFlowAutomaton:
         self.entry = 0
         self.loc_entry = self.fresh_vertex()
         self.loc_exit = self.fresh_vertex()
-        self.loc_panic = self.fresh_vertex()
+        self.panic = set()
 
     def fresh_vertex(self):
         v = self.max_loc
@@ -582,7 +570,7 @@ class StmtPanic(Stmt):
 
     def to_cfa(self, cfa, u, v):
         self.entry = u
-        cfa.add_edge(u, CmdPanic(), cfa.loc_panic)
+        cfa.panic.add(u)
 
     def execute(self, state):
         raise RuntimeError("Program threw exception")

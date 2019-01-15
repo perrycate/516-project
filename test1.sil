@@ -1,7 +1,6 @@
 x := 0;
 flag := 1;
 while (x<0){
-  panic();
   if (flag = 1) {
     x := x + 1
   } else {
