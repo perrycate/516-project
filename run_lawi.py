@@ -9,7 +9,7 @@ import sys
 USAGE = "Usage: {} [lawi|constant] file".format(sys.argv[0])
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     if len(sys.argv) != 3:
         logging.critical(USAGE)

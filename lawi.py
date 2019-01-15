@@ -1,5 +1,4 @@
 from collections import defaultdict
-from functools import reduce
 import logging
 from sil import Annotation, ControlFlowAutomaton
 import z3
@@ -129,7 +128,7 @@ class UnwindingVertex(Annotation):
 
     @property
     def is_leaf(self):
-        return len(self.children) == 0
+        return len(self.children) == 0 and not self.owner.cfa.loc_exit == self.location
 
     @property
     def covered(self):
@@ -150,6 +149,12 @@ class Unwinding(Annotation):
             transition=None,
             owner=self,
         )
+        import signal
+
+        def signal_handler(sig, frame):
+            unwinding = self
+            import code; code.interact(local=locals())
+        signal.signal(signal.SIGINT, signal_handler)
 
         # If error path is not None, unwinding is unsafe
         self._error_path = None
@@ -169,8 +174,8 @@ class Unwinding(Annotation):
                 v = next(self.uncovered_leaves())
             except StopIteration:
                 break
-
-            logging.debug("Unwinding: " + str(v))
+            logging.info("Unwinding: " + str(v))
+            logging.info("ULs: " + str([(v.num, v.location) for v in self.uncovered_leaves()]))
             w = v.parent
             while w is not None:
                 self.close(w)
@@ -251,16 +256,22 @@ class Unwinding(Annotation):
         except z3.ModelRef as model:
             self.mark_unsafe(v, model)
             return
-
+        import code; code.interact(local=locals())
         assert(len(v_pi) == len(a_hat) + 2)
         for i in range(len(a_hat)):
             phi = untimeshift(a_hat[i], times)
-            if not models(v_pi[i + 2].label, phi):
+
+            if not models(v_pi[i + 1].label, phi):
+                logging.info("{} does not model {}".format(v_pi[i + 1].label, phi))
                 for (x, y) in self.covering.copy():
-                    if y == v_pi[i + 2]:
+                    if y == v_pi[i + 1]:
                         self.covering.discard((x, y))
 
-                v_pi[i + 2].label = z3.simplify(And(v_pi[i + 2].label, phi))
+                logging.info(v_pi[i + 1].label)
+                v_pi[i + 1].label = z3.simplify(And(v_pi[i + 1].label, phi))
+                logging.info(v_pi[i + 1].label)
+            else:
+                logging.info("{} models {}".format(v_pi[i + 1].label, phi))
 
     def expand(self, v):
         logging.debug("Expanding: " + str(v))
