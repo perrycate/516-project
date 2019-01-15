@@ -10,10 +10,11 @@ if (condition = 1) {
 while (not(new = old)) {
   l := 1;
   old := new;
-  if (condition2 = 1) {
+  if (not (condition2 = 1)) {
     l := 0;
     new := new + 1
   } else {
     new := new
-  }
+  };
+  condition2 := condition2 + 1
 }

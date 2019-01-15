@@ -3,14 +3,18 @@ while (not (new = old)) {
       if (not (l = 0)) {
          panic()
       } else {
-         x := 0
+         l := 1
       };
-      l := 1;
       old := new;
       if (star = 0) {
-         l := 0;
+         if (not (l = 1)) {
+           panic()
+         } else {
+           l := 0
+         };
          new := new + 1
       } else {
          x := 0
-      }
+      };
+      star := star + 1
 }

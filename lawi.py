@@ -182,8 +182,6 @@ class Unwinding(Annotation):
                 v = next(self.uncovered_leaves())
             except StopIteration:
                 break
-            logging.info("Unwinding: " + str(v))
-            logging.info("ULs: " + str([(v.num, v.location) for v in self.uncovered_leaves()]))
             w = v.parent
             while w is not None:
                 self.close(w)
@@ -271,16 +269,11 @@ class Unwinding(Annotation):
             phi = untimeshift(a_hat[i], times)
 
             if not models(v_pi[i + 1].label, phi):
-                logging.info("{} does not model {}".format(v_pi[i + 1].label, phi))
                 for (x, y) in self.covering.copy():
                     if y == v_pi[i + 1]:
                         self.covering.discard((x, y))
 
-                logging.info(v_pi[i + 1].label)
                 v_pi[i + 1].label = z3.simplify(And(v_pi[i + 1].label, phi))
-                logging.info(v_pi[i + 1].label)
-            else:
-                logging.info("{} models {}".format(v_pi[i + 1].label, phi))
 
     def expand(self, v):
         logging.debug("Expanding: " + str(v))
