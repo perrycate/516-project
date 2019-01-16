@@ -1,9 +1,11 @@
-x := 0;
+x := 1;
 flag := 1;
-while (x<0){
+while (0<x){
   if (flag = 1) {
     x := x + 1
   } else {
+    panic();
     flag := flag + 1
   }
-}
+};
+panic()

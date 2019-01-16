@@ -4,6 +4,8 @@ while (x<3){
   if (flag = 1) {
     x := x + 1
   } else {
+    panic();
     flag := flag + 1
   }
-}
+};
+panic()

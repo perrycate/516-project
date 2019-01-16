@@ -1,8 +1,0 @@
-x := (y - y) + 1;
-if (y < 0) {
-  x := x + x
-} else {
-  x := 2
-};
-y := x;
-print(y)
